@@ -1,6 +1,17 @@
 import SwiftUI
 import Apple1Core
 
+/// The compiled CRT shader, if its metallib shipped (it's built by
+/// `xcrun metal` — see Shaders/CRT.metal). Nil on a CLT-only machine,
+/// where the Canvas fallback below takes over.
+@MainActor let crtShaderLibrary: ShaderLibrary? = {
+    guard let url = Bundle.module.url(forResource: "CRT",
+                                      withExtension: "metallib",
+                                      subdirectory: "Resources")
+    else { return nil }
+    return ShaderLibrary(url: url)
+}()
+
 /// The Apple-1's TV display: 40×24 characters rendered from the actual
 /// Signetics 2513 character ROM — the same dots a 1976 TV drew. Blinking
 /// @ cursor, phosphor green. Redraws only when the display changes.
@@ -53,25 +64,10 @@ struct TerminalView: View {
                 }
             }
         }
-        // T7 (Canvas edition — the Metal compiler needs full Xcode,
-        // which this CLT-only setup lacks): scanlines, corner shading,
-        // and tube-glass rounding. All static, no per-frame cost.
-        .overlay {
-            Canvas { ctx, size in
-                var y: CGFloat = 0
-                while y < size.height {
-                    ctx.fill(Path(CGRect(x: 0, y: y, width: size.width, height: 1)),
-                             with: .color(.black.opacity(0.15)))
-                    y += 3
-                }
-            }
-            .allowsHitTesting(false)
-        }
-        .overlay {
-            RadialGradient(colors: [.clear, .clear, .black.opacity(0.34)],
-                           center: .center, startRadius: 0, endRadius: 420)
-                .allowsHitTesting(false)
-        }
+        // T7: the real tube — Metal barrel curvature, raster-locked
+        // scanlines, bloom and vignette in one pass. Canvas fallback
+        // when the metallib isn't available.
+        .modifier(CRTGlassModifier())
         .clipShape(RoundedRectangle(cornerRadius: 14)) // tube-glass corners
         .overlay {
             LinearGradient(colors: [.white.opacity(0.045), .clear, .clear],
@@ -88,5 +84,40 @@ struct TerminalView: View {
         .padding(8)
         .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+
+/// Applies the Metal CRT pass when available, else the Canvas look.
+struct CRTGlassModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if let library = crtShaderLibrary {
+            content.visualEffect { view, proxy in
+                view.layerEffect(
+                    library.crt(.float2(proxy.size),
+                                .float(0.12),
+                                .float(0.22)),
+                    maxSampleOffset: CGSize(width: 60, height: 60))
+            }
+        } else {
+            content
+                .overlay {
+                    Canvas { ctx, size in
+                        var y: CGFloat = 0
+                        while y < size.height {
+                            ctx.fill(Path(CGRect(x: 0, y: y,
+                                                 width: size.width, height: 1)),
+                                     with: .color(.black.opacity(0.15)))
+                            y += 3
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
+                .overlay {
+                    RadialGradient(colors: [.clear, .clear, .black.opacity(0.34)],
+                                   center: .center, startRadius: 0, endRadius: 420)
+                        .allowsHitTesting(false)
+                }
+        }
     }
 }
