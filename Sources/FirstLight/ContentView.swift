@@ -1100,6 +1100,7 @@ struct InfoBar: View {
         ("1976", "There's no power switch. Plug it in and it's on. Keyboard, TV, transformers and case were all bring-your-own."),
         ("1976", "Owners built their boards into briefcases, drawers and hand-cut wood cases — the Smithsonian's wears one."),
         ("1975", "The 6502 cost $25 when Intel's 8080 cost $179. That price difference is why hobby computers happened at all."),
+        ("1976", "The board was designed for TWO brains: Motorola's 6800 or the 6502. The unpopulated \"(6800 ONLY)\" corner is the road not taken — hover it."),
         ("1976", "The Woz Monitor in the PROMs is 256 bytes — still studied as a masterpiece of tiny programming."),
         ("1976", "No lowercase: the 2513 character chip holds exactly 64 glyphs. This app renders its actual dot patterns."),
         ("1977", "Apple offered Apple-1 owners trade-in credit toward an Apple II — then scrapped the returns. A big reason only ~80 boards survive."),

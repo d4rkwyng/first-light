@@ -289,6 +289,11 @@ final class MachineController {
     /// clean, crisp display: the showcase becomes a plain emulator.
     var crtEffects = true
 
+    /// Populate the (6800 ONLY) option field — the components a
+    /// Motorola 6800 build would have needed. Pure what-if: no 6800
+    /// Apple-1 was ever shipped.
+    var populate6800 = false
+
     /// T5: CPU speed multiplier. 1 = the authentic 1.023 MHz (default);
     /// 10/100 = the modern impatience valve. The display still draws at
     /// its honest 60 cps — only computation accelerates, exactly as a

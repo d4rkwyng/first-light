@@ -394,6 +394,46 @@ struct BoardView: View {
             .position(x: 815 + 88.5, y: 10 + 64)
             .allowsHitTesting(false)
 
+            // The (6800 ONLY) option field: the dual-CPU provision.
+            // Populated only via the what-if toggle.
+            if controller.populate6800 {
+                Canvas { ctx, _ in
+                    for g in 0..<4 {
+                        for k in 0..<2 {
+                            let x = CGFloat(132 + g * 60 + k * 18)
+                            for y: CGFloat in [56, 73] {
+                                let r = CGRect(x: x, y: y, width: 14, height: 7)
+                                var leads = Path()
+                                leads.move(to: CGPoint(x: r.minX - 3, y: r.midY))
+                                leads.addLine(to: CGPoint(x: r.maxX + 3, y: r.midY))
+                                ctx.stroke(leads, with: .color(Color(white: 0.7)),
+                                           lineWidth: 1.3)
+                                ctx.fill(Path(roundedRect: r, cornerRadius: 3.5),
+                                         with: .color(Color(red: 0.76, green: 0.63,
+                                                            blue: 0.40)))
+                            }
+                        }
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+            Color.clear
+                .frame(width: 262, height: 50)
+                .contentShape(Rectangle())
+                .onHover { inside in
+                    controller.hoverInfo = inside
+                        ? "The (6800 ONLY) field: Woz designed this board "
+                        + "to take EITHER CPU — Motorola's 6800 was the "
+                        + "original plan until MOS sold the 6502 for $25. "
+                        + "These positions hold the 6800's extra clock "
+                        + "parts; no shipped Apple-1 ever populated them. "
+                        + (controller.populate6800
+                           ? "(Showing the what-if.)"
+                           : "(View menu: populate the what-if.)")
+                        : nil
+                }
+                .position(x: 116 + 131, y: 42 + 25)
+
             // Every passive explains itself on hover
             ForEach(Array(BoardPassives.items.enumerated()),
                     id: \.offset) { _, item in

@@ -104,6 +104,9 @@ struct FirstLightApp: App {
                 Toggle("CRT Effects", isOn: Binding(
                     get: { controller.crtEffects },
                     set: { controller.crtEffects = $0 }))
+                Toggle("Populate the 6800 Option Field", isOn: Binding(
+                    get: { controller.populate6800 },
+                    set: { controller.populate6800 = $0 }))
                 Toggle("Footprint Audit Overlay", isOn: Binding(
                     get: { controller.showAudit },
                     set: { controller.showAudit = $0 }))
