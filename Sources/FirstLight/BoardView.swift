@@ -499,6 +499,59 @@ struct BoardView: View {
                 }
                 .position(x: 116 + 131, y: 42 + 25)
 
+            // The chip-select jumper wires above the 74154 (Copson
+            // photo): purple Y→WX arc and two pale wires into the
+            // numbered holes. Schematic note 8: these select which 4K
+            // blocks the RAM banks answer — the memory map, as wires.
+            Canvas { ctx, _ in
+                func wire(_ pts: [(CGFloat, CGFloat)], _ color: Color,
+                          width: CGFloat) {
+                    var path = Path()
+                    path.move(to: CGPoint(x: pts[0].0, y: pts[0].1))
+                    for i in 1..<pts.count where i + 1 < pts.count {
+                        // smooth through control points
+                        path.addQuadCurve(
+                            to: CGPoint(x: (pts[i].0 + pts[i + 1].0) / 2,
+                                        y: (pts[i].1 + pts[i + 1].1) / 2),
+                            control: CGPoint(x: pts[i].0, y: pts[i].1))
+                    }
+                    path.addLine(to: CGPoint(x: pts.last!.0, y: pts.last!.1))
+                    ctx.stroke(path, with: .color(color),
+                               lineWidth: width)
+                    for end in [pts.first!, pts.last!] {
+                        ctx.fill(Path(ellipseIn: CGRect(x: end.0 - 1.8,
+                                                        y: end.1 - 1.8,
+                                                        width: 3.6, height: 3.6)),
+                                 with: .color(Color(white: 0.6)))
+                    }
+                }
+                // purple: long arc from the Y/Z posts over to W/X
+                wire([(424, 312), (438, 290), (475, 282), (505, 296),
+                      (511, 313)],
+                     Color(red: 0.55, green: 0.44, blue: 0.76), width: 2.6)
+                // white: R/S/T post curving down into the hole row
+                wire([(497, 303), (478, 316), (458, 330), (443, 328)],
+                     Color(white: 0.85), width: 2.4)
+                // pale grey: short hop from Z down to its hole
+                wire([(431, 313), (438, 322), (446, 329)],
+                     Color(white: 0.72), width: 2.2)
+            }
+            .allowsHitTesting(false)
+            Color.clear
+                .frame(width: 110, height: 40)
+                .contentShape(Rectangle())
+                .onHover { inside in
+                    controller.hoverInfo = inside
+                        ? "Chip-select jumper wires (note 8): they wire "
+                        + "each RAM bank to a 4K address block — bank W "
+                        + "to $0000, bank X to $E000, where BASIC lives. "
+                        + "The memory map isn't in silicon; it's these "
+                        + "three wires. Rewire them and the machine "
+                        + "rearranges."
+                        : nil
+                }
+                .position(x: 468, y: 308)
+
             // Every passive explains itself on hover
             ForEach(Array(BoardPassives.items.enumerated()),
                     id: \.offset) { _, item in
