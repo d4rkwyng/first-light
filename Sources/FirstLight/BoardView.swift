@@ -468,15 +468,22 @@ struct BoardView: View {
                 .frame(width: 262, height: 50)
                 .contentShape(Rectangle())
                 .onHover { inside in
+                    // Schematic note 7, verified: "UNIT, AS SUPPLIED,
+                    // INCLUDES A 6502... AND HAS OMITTED ALL COMPONENTS
+                    // SHOWN WITHIN THE DOTTED BOX. IF A 6800 IS
+                    // SUBSTITUTED... INSTALL ALL COMPONENTS SHOWN, AND
+                    // BREAK BOTH SOLDER BRIDGES NOTED '6502'."
                     controller.hoverInfo = inside
-                        ? "The (6800 ONLY) field: Woz designed this board "
-                        + "to take EITHER CPU — Motorola's 6800 was the "
-                        + "original plan until MOS sold the 6502 for $25. "
-                        + "These positions hold the 6800's extra clock "
-                        + "parts; no shipped Apple-1 ever populated them. "
+                        ? "The dotted box: the board takes EITHER CPU. "
+                        + "As supplied — 6502, this box EMPTY, and two "
+                        + "solder bridges made at the points marked "
+                        + "6502. For a Motorola 6800: install Q1-Q3, "
+                        + "the 22-ohm and 1K resistors, four caps — and "
+                        + "break both bridges. None ever shipped that "
+                        + "way. "
                         + (controller.populate6800
-                           ? "(Showing the what-if.)"
-                           : "(View menu: populate the what-if.)")
+                           ? "(Showing the 6800 what-if.)"
+                           : "(View ▸ populate the what-if.)")
                         : nil
                 }
                 .position(x: 116 + 131, y: 42 + 25)
