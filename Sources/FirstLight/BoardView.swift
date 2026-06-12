@@ -538,7 +538,9 @@ struct BoardView: View {
 
             // Sockets: fixed to the board (they don't move when a chip
             // is lifted out — the Apple-1 was fully socketed)
-            ForEach(Self.chips) { chip in
+            ForEach(Self.chips.filter {
+                $0.id != "clock6800" || controller.populate6800
+            }) { chip in
                 if chip.style == .dip || chip.style == .lightDip
                     || chip.style == .ceramicRam || chip.style == .smallCan
                     || chip.style == .whiteCeramic {
@@ -587,10 +589,10 @@ struct BoardView: View {
             // NOTE: interaction modifiers must come BEFORE .position —
             // applied after, the view is board-sized and the topmost one
             // swallows every drag/hover/click on the whole board.
-            ForEach(Self.chips) { chip in
-                let present = chip.id == "clock6800"
-                    ? controller.populate6800
-                    : (chip.group.map { controller.placed.contains($0) } ?? true)
+            ForEach(Self.chips.filter {
+                $0.id != "clock6800" || controller.populate6800
+            }) { chip in
+                let present = chip.group.map { controller.placed.contains($0) } ?? true
                 ChipView(chip: chip,
                          controller: controller,
                          present: present)
