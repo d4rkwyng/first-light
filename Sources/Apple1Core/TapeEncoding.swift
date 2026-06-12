@@ -19,18 +19,22 @@ public enum TapeEncoding {
             out.append(565)
             out.append(455)
         }
-        out.append(385) // the short sync phase
+        // the start bit: one full SHORT cycle (~385 µs total) — wozaci
+        // detects it with a ~364 µs phase window (LDY #31)
+        out.append(192.5)
+        out.append(192.5)
+        // Bit polarity per the ROM's own reader (CPY #128 carry → ROL):
+        // a LONG cycle (1 kHz) is a 1, a SHORT cycle (2 kHz) is a 0.
+        // (The summary tables that say "1 = 2 kHz" disagree with the
+        // code; the code wins.)
         for byte in bytes {
-            var first = true
             for bit in (0..<8).reversed() {
-                let half = (byte >> bit) & 1 == 1 ? 250.0 : 500.0
-                // the real writer's per-byte overhead stretches each
-                // byte's first phase — the reader needs that allowance
-                out.append(first ? half + byteGapUs : half)
-                first = false
+                let half = (byte >> bit) & 1 == 1 ? 500.0 : 250.0
+                out.append(half)
                 out.append(half)
             }
         }
+        _ = byteGapUs // reader self-compensates (thresholds 58/57/53)
         // postamble: the last data phase needs a closing edge
         for _ in 0..<3 {
             out.append(565)

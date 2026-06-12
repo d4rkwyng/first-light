@@ -173,8 +173,10 @@ final class SoundEngine {
     /// recording plays (fading to background after a few seconds); in
     /// showcase mode just the first moments of the same real waveform.
     func tapePlay(bytes: [UInt8], authentic: Bool) -> Double {
+        // authentic leader matches the bus playback exactly — the
+        // sound IS what the machine hears
         let (buffer, duration) = makeTapeAudio(
-            bytes: bytes, leaderSeconds: authentic ? 10 : 0.6)
+            bytes: bytes, leaderSeconds: authentic ? 6.0 : 0.6)
         guard enabled else { return duration }
         if !engine.isRunning { try? engine.start() }
         tapeRamp?.cancel()

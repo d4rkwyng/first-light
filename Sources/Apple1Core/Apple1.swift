@@ -67,7 +67,7 @@ public final class Apple1 {
 
     /// Queue a tape; the signal clock anchors to the FIRST $C0xx poll,
     /// so the ROM always hears the leader from its beginning.
-    public func armTape(bytes: [UInt8], leaderSeconds: Double = 2.5,
+    public func armTape(bytes: [UInt8], leaderSeconds: Double = 6.0,
                         speed: Double = 1.0, byteGapUs: Double = 0) {
         tapeTransitions = TapeEncoding.transitions(bytes: bytes,
                                                    leaderSeconds: leaderSeconds,

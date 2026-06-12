@@ -35,18 +35,18 @@ enum TapeDecoder {
             prev = cur
         }
 
-        // skip the leader, find the sync phase (~385 µs)
+        // skip the leader (455/565 µs phases); the start bit is the
+        // first SHORT phase (~192 µs), two phases long
         var i = 0
-        while i < halves.count, !(330...430).contains(halves[i]) { i += 1 }
-        guard i < halves.count else { throw DecodeError.noData }
-        i += 1 // past sync
-        // read bit halves in pairs; the postamble's long leader-like
-        // phases produce <8 stray bits that the %8 trim discards
+        while i < halves.count, halves[i] > 360 { i += 1 }
+        guard i + 1 < halves.count else { throw DecodeError.noData }
+        i += 2 // past both start-bit phases
+        // bit halves: ~500 µs = 1, ~250 µs = 0 (the ROM's polarity)
         var bits: [Bool] = []
         while i + 1 < halves.count {
             let a = halves[i]
-            guard a < 620 else { break } // postamble reached
-            bits.append(a < 330)
+            guard a < 540 else { break } // postamble reached
+            bits.append(a >= 360)
             i += 2
         }
         var bytes: [UInt8] = []

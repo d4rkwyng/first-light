@@ -167,25 +167,24 @@ enum FailureVerifier {
                     "LIST after restore: \(out.suffix(80))")
         }
 
-        // WIP (gap #2 of the accuracy plan): the REAL ACI ROM loads from
-        // FSK on the bus. Reads reach ~97% of the range — a wozaci
-        // timing subtlety remains. Reported, not yet counted.
-        do {
-            let m = fresh() // created LAST: fake6502 binds to one machine
-            if let basic = try? ROM.integerBASIC(),
-               let aci = try? ROM.wozaci() {
-                m.installACI(rom: aci)
-                m.run(cycles: 500_000)
-                m.armTape(bytes: basic, leaderSeconds: 2.5)
-                m.type("C100R\n")
-                m.run(cycles: 1_000_000)
-                m.type("E000.EFFFR\n")
-                m.run(cycles: 60_000_000)
-                let ptr = Int(m.peek(0x26)) | Int(m.peek(0x27)) << 8
-                let done = ptr >= 0xF000
-                print(String(format: "%@  AUTHENTIC ACI bus-load (WIP): pointer %04X / F000",
-                             done ? "PASS" : "WIP ", ptr))
-            }
+        check("AUTHENTIC ACI: the 1976 ROM reads BASIC as FSK off the bus") {
+            let m = fresh()
+            guard let basic = try? ROM.integerBASIC(),
+                  let aci = try? ROM.wozaci() else { return (false, "no ROMs") }
+            m.installACI(rom: aci)
+            m.run(cycles: 500_000)
+            m.armTape(bytes: basic, leaderSeconds: 6.0)
+            m.type("C100R\n")
+            m.run(cycles: 1_000_000)
+            m.type("E000.EFFFR\n")
+            // 6 s leader + ~31 s of data + the ROM's own 3.4 s warm-up
+            m.run(cycles: 60_000_000)
+            let before = m.terminal.transcript
+            m.type("E000R\n")
+            m.run(cycles: 4_000_000)
+            let out = String(m.terminal.transcript.dropFirst(before.count))
+            return (out.contains(">"),
+                    "no BASIC prompt after authentic tape read")
         }
 
         exit(failures == 0 ? 0 : 1)
