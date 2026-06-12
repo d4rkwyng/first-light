@@ -397,22 +397,69 @@ struct BoardView: View {
             // The (6800 ONLY) option field: the dual-CPU provision.
             // Populated only via the what-if toggle.
             if controller.populate6800 {
+                // Component outlines extracted from the silkscreen:
+                // Q transistors (TO-92), R resistors, thin diodes, and
+                // the two capacitor positions — the 6800's clock parts.
                 Canvas { ctx, _ in
-                    for g in 0..<4 {
-                        for k in 0..<2 {
-                            let x = CGFloat(132 + g * 60 + k * 18)
-                            for y: CGFloat in [56, 73] {
-                                let r = CGRect(x: x, y: y, width: 14, height: 7)
-                                var leads = Path()
-                                leads.move(to: CGPoint(x: r.minX - 3, y: r.midY))
-                                leads.addLine(to: CGPoint(x: r.maxX + 3, y: r.midY))
-                                ctx.stroke(leads, with: .color(Color(white: 0.7)),
-                                           lineWidth: 1.3)
-                                ctx.fill(Path(roundedRect: r, cornerRadius: 3.5),
-                                         with: .color(Color(red: 0.76, green: 0.63,
-                                                            blue: 0.40)))
-                            }
+                    func leads(_ r: CGRect, vertical: Bool = false) {
+                        var p = Path()
+                        if vertical {
+                            p.move(to: CGPoint(x: r.midX, y: r.minY - 3))
+                            p.addLine(to: CGPoint(x: r.midX, y: r.maxY + 3))
+                        } else {
+                            p.move(to: CGPoint(x: r.minX - 3, y: r.midY))
+                            p.addLine(to: CGPoint(x: r.maxX + 3, y: r.midY))
                         }
+                        ctx.stroke(p, with: .color(Color(white: 0.7)),
+                                   lineWidth: 1.3)
+                    }
+                    // resistors (silk: 22.4 x 11.5 outlines)
+                    for (x, y) in [(104.3, 31.0), (206.7, 31.0),
+                                   (129.9, 55.4), (181.1, 55.7),
+                                   (232.3, 55.7)] {
+                        let r = CGRect(x: x + 4, y: y + 2.7,
+                                       width: 14.4, height: 6.1)
+                        leads(CGRect(x: x, y: y, width: 22.4, height: 11.5))
+                        ctx.fill(Path(roundedRect: r, cornerRadius: 3),
+                                 with: .color(Color(red: 0.76, green: 0.63,
+                                                    blue: 0.40)))
+                    }
+                    // thin diodes (18.9 x 5.5)
+                    for (x, y) in [(131.7, 48.4), (182.9, 48.4),
+                                   (234.1, 48.4)] {
+                        let r = CGRect(x: x + 3.5, y: y + 0.7,
+                                       width: 11.9, height: 4.1)
+                        leads(CGRect(x: x, y: y, width: 18.9, height: 5.5))
+                        ctx.fill(Path(roundedRect: r, cornerRadius: 2),
+                                 with: .color(Color(red: 0.30, green: 0.16,
+                                                    blue: 0.10)))
+                        ctx.fill(Path(CGRect(x: r.maxX - 2.4, y: r.minY,
+                                             width: 1.8, height: r.height)),
+                                 with: .color(Color(white: 0.75)))
+                    }
+                    // Q transistors: TO-92 half-moons (12 x 10 circles)
+                    for (x, y) in [(135.1, 33.3), (186.3, 33.3),
+                                   (237.5, 33.3)] {
+                        let r = CGRect(x: x, y: y, width: 12.1, height: 10.0)
+                        var halfMoon = Path()
+                        halfMoon.addArc(center: CGPoint(x: r.midX, y: r.midY),
+                                        radius: r.width / 2,
+                                        startAngle: .degrees(-50),
+                                        endAngle: .degrees(230),
+                                        clockwise: false)
+                        halfMoon.closeSubpath()
+                        ctx.fill(halfMoon, with: .color(Color(white: 0.10)))
+                        ctx.stroke(halfMoon,
+                                   with: .color(Color(white: 0.35)),
+                                   lineWidth: 0.8)
+                    }
+                    // the two capacitors (symbol marks at the silk)
+                    for (x, y) in [(149.0, 69.8), (183.6, 69.8)] {
+                        let r = CGRect(x: x - 4, y: y - 2, width: 9, height: 9)
+                        leads(CGRect(x: x - 5, y: y, width: 11, height: 5))
+                        ctx.fill(Path(ellipseIn: r),
+                                 with: .color(Color(red: 0.86, green: 0.52,
+                                                    blue: 0.16)))
                     }
                 }
                 .allowsHitTesting(false)
