@@ -9,7 +9,7 @@ struct TapeDeckBar: View {
     var body: some View {
         let loading = controller.nowLoading != nil
         let progress = loading ? controller.loadProgress : 1
-        let spin = loading ? Double(controller.frame) * 6 : 0
+        let spin = loading ? Double(controller.pulseFrame) * 6 : 0
         VStack(spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 // cassette door
@@ -231,7 +231,7 @@ struct TapeLoadingToast: View {
                             .frame(width: 1.4, height: 5)
                             .offset(y: -3)
                             .rotationEffect(.degrees(Double(i) * 120
-                                + Double(controller.frame) * 6))
+                                + Double(controller.pulseFrame) * 6))
                     }
                 }
                 Text("LOADING \(name.uppercased())  \(Int(controller.loadProgress * 100))%")

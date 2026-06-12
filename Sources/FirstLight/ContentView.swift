@@ -478,7 +478,7 @@ struct CompactShelf: View {
             // chips: anything pulled glows amber here — double-click
             // reseats it without expanding the shelf
             ForEach(ChipGroup.allCases) { group in
-                let calloutAge = controller.frame
+                let calloutAge = controller.pulseFrame
                     - (controller.recentlyRemoved[group] ?? -1000)
                 let calloutVisible = calloutAge < 180
                 let calloutFade = calloutAge < 120 ? 1.0
@@ -805,7 +805,7 @@ struct TutorialPanel: View {
     let controller: MachineController
 
     var body: some View {
-        let _ = controller.frame
+        let _ = controller.pulseFrame
         if let index = controller.tutorialStep {
             let step = controller.tutorialSteps[index]
             let last = index == controller.tutorialSteps.count - 1
@@ -1219,7 +1219,7 @@ struct InfoBar: View {
             return ("Try FF00.FFFF to read the ROM. Add the cassette interface to load BASIC (⌘B).", false)
         }
         // Fully assembled: rotate lore every 15 seconds; arrow to skip.
-        let index = (controller.frame / 900 + controller.factOffset) % Self.facts.count
+        let index = (controller.pulseFrame / 900 + controller.factOffset) % Self.facts.count
         let (year, fact) = Self.facts[index]
         return ("\(year) — \(fact)", true)
     }

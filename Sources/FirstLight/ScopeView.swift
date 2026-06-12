@@ -9,7 +9,7 @@ struct ScopeView: View {
 
     var body: some View {
         // refresh ~10×/sec, not every frame
-        let _ = controller.frame / 6
+        let _ = controller.pulseFrame
         let regs = controller.machine.registers
         VStack(alignment: .leading, spacing: 10) {
             // registers

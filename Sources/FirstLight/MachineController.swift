@@ -199,7 +199,7 @@ final class MachineController {
     var loadProgress: Double {
         guard nowLoading != nil else { return 0 }
         let span = max(1, loadFinishFrame - loadStartFrame)
-        return max(0, min(1, Double(frame - loadStartFrame) / Double(span)))
+        return max(0, min(1, Double(pulseFrame - loadStartFrame) / Double(span)))
     }
 
     /// Stage a cassette: machine assembles, the deck spins for ~3 s with
@@ -232,18 +232,31 @@ final class MachineController {
     var fullScreenDisplay = false
     private var lastEscFrame = -100
 
+    /// 20 Hz heartbeat for ambient animation (reel spin, glow pulse,
+    /// key flash). Views observe THIS, not `frame`, so the 60 Hz tick
+    /// doesn't re-render the world three times more than needed.
+    private(set) var pulseFrame = 0
+
     /// Frame at which mains power last came on (drives CRT warm-up).
     private(set) var poweredFrame: Int?
 
     /// 0...1 — how warmed-up the tube's phosphor is. Both the machine
     /// powering up and the monitor's own switch restart the warm-up.
-    var crtWarmth: Double {
-        guard powered, let on = poweredFrame else { return 0 }
-        var warmth = min(1, Double(frame - on) / 110)
-        if let monitorOn = monitorOnFrame {
-            warmth = min(warmth, min(1, Double(frame - monitorOn) / 110))
+    private(set) var crtWarmth: Double = 0
+
+    private func updateWarmth() {
+        var warmth: Double = 0
+        if powered, let on = poweredFrame {
+            warmth = min(1, Double(frame - on) / 110)
+            if let monitorOn = monitorOnFrame {
+                warmth = min(warmth, min(1, Double(frame - monitorOn) / 110))
+            }
+            warmth = max(0, warmth)
         }
-        return warmth
+        if abs(warmth - crtWarmth) > 0.02 || (warmth == 0) != (crtWarmth == 0)
+            || (warmth == 1) != (crtWarmth == 1) {
+            crtWarmth = warmth
+        }
     }
 
     /// All board lighting theater — power-net surge/pulse and the
@@ -304,12 +317,12 @@ final class MachineController {
     private var keyMonitor: Any?
     private var videoChars = 0
     private var autoTypeQueue: [UInt8] = []
-    private var silentLowFrames = 0
+    @ObservationIgnored private var silentLowFrames = 0
 
     /// True when the CPU has been executing low memory with no output for
     /// a couple of seconds — the classic "ran garbage, hit BRK, looping
     /// through the zero vector" crash. Real Apple-1s did exactly this.
-    var looksCrashed: Bool { silentLowFrames > 120 }
+    private(set) var looksCrashed = false
 
     var allPlaced: Bool { placed.count == ChipGroup.allCases.count }
     var essentialsPlaced: Bool {
@@ -370,8 +383,10 @@ final class MachineController {
             // below that is running garbage, not waiting for input.
             if machine.pc < 0xE000 && videoChars == 0 {
                 silentLowFrames += 1
+                if silentLowFrames == 121 { looksCrashed = true }
             } else {
                 silentLowFrames = 0
+        if looksCrashed { looksCrashed = false }
             }
             videoChars = 0
         } else {
@@ -394,10 +409,12 @@ final class MachineController {
         if abs(vHold) > 0.08 || (powered && crtWarmth < 1) {
             displayRevision += 1
         }
+        if frame % 3 == 0 { pulseFrame = frame }
+        updateWarmth()
         let blink = powered && placed.contains(.video) && (frame / 15) % 2 == 0
         if machine.terminal.revision != lastTerminalRevision || blink != cursorVisible {
             lastTerminalRevision = machine.terminal.revision
-            cursorVisible = blink
+            if cursorVisible != blink { cursorVisible = blink }
             displayRevision += 1
         }
         if let step = tutorialStep, !stepComplete {
@@ -464,8 +481,17 @@ final class MachineController {
         }
     }
 
+    @ObservationIgnored private var rawGlow: [Region: Double] = [:]
+
     private func update(_ region: Region, _ intensity: Double) {
-        glow[region] = max((glow[region] ?? 0) * 0.80, min(1.0, intensity))
+        // raw value evolves every tick; the OBSERVED value is quantized
+        // to 1/12 steps so chip views only re-render on visible change
+        let next = max((rawGlow[region] ?? 0) * 0.80, min(1.0, intensity))
+        rawGlow[region] = next
+        let quantized = (next * 12).rounded() / 12
+        if glow[region] != quantized {
+            glow[region] = quantized
+        }
     }
 
     // MARK: Peripherals
@@ -496,6 +522,7 @@ final class MachineController {
             poweredFrame = nil
             autoTypeQueue.removeAll()
             silentLowFrames = 0
+        if looksCrashed { looksCrashed = false }
         }
     }
 
@@ -526,7 +553,7 @@ final class MachineController {
     /// Set after a hot-reseat reset: RAM (and any loaded BASIC)
     /// survived — the info bar explains how to get back.
     private(set) var reseatHintUntil = 0
-    var reseatHintActive: Bool { frame < reseatHintUntil }
+    var reseatHintActive: Bool { pulseFrame < reseatHintUntil }
 
     func place(_ group: ChipGroup) {
         placed.insert(group)
@@ -594,6 +621,8 @@ final class MachineController {
             bytes = Array((TapeLibrary.basicSource(file) ?? "").utf8)
         case .binary(let file, _, _):
             bytes = TapeLibrary.binary(file) ?? []
+        case .basicImage(let file, _):
+            bytes = TapeLibrary.binary(file) ?? []
         }
         stageLoad(name: tape.name, bytes: bytes) { [weak self] in
             self?.performInsert(tape)
@@ -613,6 +642,19 @@ final class MachineController {
             machine.run(cycles: 80_000_000)
             machine.displayCyclesPerChar = Apple1.cyclesPerFrame
             autoType("RUN\n")
+        case .basicImage(let file, let load):
+            guard let image = TapeLibrary.binary(file) else { return }
+            loadBASIC() // cold boot gives a sane zero page
+            machine.displayCyclesPerChar = 0
+            machine.run(cycles: 6_000_000)
+            machine.displayCyclesPerChar = Apple1.cyclesPerFrame
+            machine.load(image, at: load)
+            // point BASIC's program pointers at the image
+            let pointer = [UInt8(load & 0xFF), UInt8(load >> 8)]
+            machine.load(pointer, at: 0x00CA)
+            machine.load(pointer, at: 0x00E4)
+            machine.load(pointer, at: 0x00E6)
+            autoType("E2B3R\nRUN\n")
         case .binary(let file, let load, let run):
             guard let bytes = TapeLibrary.binary(file) else { return }
             reset()
@@ -820,7 +862,7 @@ final class MachineController {
     private var strayKeys = 0
     private var lastStrayFrame = -1000
 
-    var typingHintActive: Bool { frame < typingHintUntil }
+    var typingHintActive: Bool { pulseFrame < typingHintUntil }
 
     private func handle(keyCode: UInt16, characters: String?, command: Bool) -> Bool {
         if command { return false }
@@ -864,6 +906,7 @@ final class MachineController {
     func reset() {
         guard powered else { return }
         silentLowFrames = 0
+        if looksCrashed { looksCrashed = false }
         machine.reset()
     }
 

@@ -19,6 +19,9 @@ struct FirstLightApp: App {
         if CommandLine.arguments.contains("--verify-failures") {
             FailureVerifier.run()
         }
+        if CommandLine.arguments.contains("--zp-experiment") {
+            ZPExperiment.run()
+        }
     }
 
     @State private var controller = MachineController()

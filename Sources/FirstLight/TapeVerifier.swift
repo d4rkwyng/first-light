@@ -16,6 +16,8 @@ enum TapeVerifier {
         "Dis-Assembler": "",          // disassembler waits for input
         "Extended Monitor": "",        // banner varies; crash check only
         "Microchess": "MICROCHESS",
+        "Blackjack": "",
+        "Life": "",
         "15 Puzzle": "",
         "2048": "",
         "Mandelbrot 65": "",
@@ -58,6 +60,20 @@ enum TapeVerifier {
             machine.load(bytes, at: load)
             before = machine.terminal.transcript
             machine.type(runCmd + "\n")
+        case .basicImage(let file, let load):
+            guard let basic = try? ROM.integerBASIC(),
+                  let image = TapeLibrary.binary(file)
+            else { return (false, "missing resources") }
+            machine.load(basic, at: 0xE000)
+            machine.type("E000R\n")
+            machine.run(cycles: 4_000_000)
+            machine.load(image, at: load)
+            let pointer = [UInt8(load & 0xFF), UInt8(load >> 8)]
+            machine.load(pointer, at: 0x00CA)
+            machine.load(pointer, at: 0x00E4)
+            machine.load(pointer, at: 0x00E6)
+            before = machine.terminal.transcript
+            machine.type("E2B3R\nRUN\n")
         }
         machine.run(cycles: 80_000_000)
         var output = String(machine.terminal.transcript.dropFirst(before.count))

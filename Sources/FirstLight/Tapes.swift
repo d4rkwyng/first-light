@@ -10,6 +10,9 @@ struct Tape: Identifiable {
         case integerBASIC                      // tape #1: BASIC itself
         case basicSource(file: String)         // type listing into BASIC, RUN
         case binary(file: String, load: UInt16, run: String)
+        /// A warm-start BASIC memory image without its pointer block —
+        /// we rebuild the zero-page pointers ($CA/$E4/$E6 = start).
+        case basicImage(file: String, load: UInt16)
     }
 
     let name: String
@@ -57,8 +60,16 @@ enum TapeLibrary {
              blurb: "Peter Jennings' 1976 chess engine — the first "
              + "commercial game software for a personal computer, $10 "
              + "by mail order."),
-        // Blackjack: published only as a warm-start memory image (needs
-        // the zero-page block) — pending a clean source listing.
+        Tape(name: "Life",
+             kind: .binary(file: "life", load: 0x0280, run: "400R"),
+             blurb: "Conway's Game of Life, breeding on a 1976 screen. "
+             + "Came with the machine — emergence at 60 characters a "
+             + "second."),
+        Tape(name: "Blackjack",
+             kind: .basicImage(file: "blackjack", load: 0x0800),
+             blurb: "Hit or stand — the dealer lives in 2 KB. Published "
+             + "as a bare memory image; we rebuild BASIC's pointers "
+             + "around it."),
 
         // — Homebrew: written for real Apple-1s, this century —
         Tape(name: "15 Puzzle",

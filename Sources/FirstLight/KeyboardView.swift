@@ -87,7 +87,7 @@ struct KeyboardView: View {
         guard let code, let flash = controller.keyFlash else { return false }
         let ascii = flash.ascii == 0x0D || code != 0x0D
             ? flash.ascii : flash.ascii
-        return ascii == code && controller.frame - flash.frame < 8
+        return ascii == code && controller.pulseFrame - flash.frame < 9
     }
 
     private func cap(_ label: String, width: CGFloat = 32,
