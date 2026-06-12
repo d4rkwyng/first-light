@@ -547,7 +547,9 @@ struct BoardView: View {
                         + "to $0000, bank X to $E000, where BASIC lives. "
                         + "The memory map isn't in silicon; it's these "
                         + "three wires. Rewire them and the machine "
-                        + "rearranges."
+                        + "rearranges. (Needed whichever processor is "
+                        + "fitted — the CPU choice is the solder "
+                        + "bridges, not these.)"
                         : nil
                 }
                 .position(x: 468, y: 308)
