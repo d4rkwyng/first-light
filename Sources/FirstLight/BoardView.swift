@@ -155,10 +155,19 @@ struct BoardView: View {
         c.append(Chip(id: "ttlD13", label: "555",
                       frame: CGRect(x: 637, y: 108, width: 35, height: 13),
                       region: .video, info: ttlInfo))
-        // ---- Row C ----
-        for (n, name) in [(1.0, "7427"), (4.0, "74174"), (5.0, "7450"),
-                          (6.0, "7432"), (7.0, "74157"), (8.0, "7402"),
-                          (9.0, "7408"), (10.0, "74175"), (12.0, "7402"),
+        // ---- Row C (labels verified against the silkscreen) ----
+        c.append(Chip(id: "clock6800", label: "7404",
+                      frame: CGRect(x: col(1) - 7, y: rowY("C") - 21,
+                                    width: 14, height: 42),
+                      region: nil,
+                      info: "The 6800's clock driver — silk says (6800 "
+                      + "ONLY). As supplied this socket is EMPTY: the "
+                      + "6502 makes its own clock. Machine ▸ Processor "
+                      + "shows the configuration that never shipped.",
+                      style: .dip))
+        for (n, name) in [(4.0, "74157"), (5.0, "7427"),
+                          (6.0, "7410"), (7.0, "74174"), (8.0, "7450"),
+                          (9.0, "7432"), (10.0, "7402"), (12.0, "7408"),
                           (13.0, "74175"), (14.0, "74157"), (15.0, "7400")] {
             c.append(v("ttlC\(Int(n))", name, n, "C"))
         }
@@ -169,9 +178,11 @@ struct BoardView: View {
         c += [Chip(id: "ttlC11a", label: "DS0025",
                    frame: CGRect(x: col(11) - 7, y: 222, width: 14, height: 16),
                    region: .video, info: ttlInfo, style: .smallCan),
-              Chip(id: "ttlC11b", label: "DS0025",
+              Chip(id: "ttlC11b", label: "2504",
                    frame: CGRect(x: col(11) - 7, y: 248, width: 14, height: 16),
-                   region: .video, info: ttlInfo, style: .smallCan)]
+                   region: .video,
+                   info: "The seventh 2504 shift register — silk puts it "
+                   + "under the DS0025 pair.", style: .smallCan)]
         // ---- Row B: gates, KEYBOARD col 4 (port), 74S257s, 74154, RAM W ----
         for (n, name) in [(1.0, "7400"), (2.0, "7410"), (3.0, "74123"),
                           (5.0, "74S257"), (6.0, "74S257"), (7.0, "74S257"),
@@ -483,7 +494,7 @@ struct BoardView: View {
                         + "way. "
                         + (controller.populate6800
                            ? "(Showing the 6800 what-if.)"
-                           : "(View ▸ populate the what-if.)")
+                           : "(Machine ▸ Processor swaps the what-if in.)")
                         : nil
                 }
                 .position(x: 116 + 131, y: 42 + 25)
@@ -577,7 +588,9 @@ struct BoardView: View {
             // applied after, the view is board-sized and the topmost one
             // swallows every drag/hover/click on the whole board.
             ForEach(Self.chips) { chip in
-                let present = chip.group.map { controller.placed.contains($0) } ?? true
+                let present = chip.id == "clock6800"
+                    ? controller.populate6800
+                    : (chip.group.map { controller.placed.contains($0) } ?? true)
                 ChipView(chip: chip,
                          controller: controller,
                          present: present)

@@ -1160,10 +1160,24 @@ struct InfoBar: View {
                 + "means something to BASIC; the monitor's run command is "
                 + "an address followed by R, like E000R.)", false)
         }
+        if controller.powered, controller.cpuVariant == .m6800 {
+            return ("The 6800 configuration: clock parts installed, "
+                + "bridges broken, terminal blinking — but the PROMs "
+                + "hold 6502 code and no 6800 monitor was ever written. "
+                + "It waits forever for software that never existed. "
+                + "(Machine ▸ Processor swaps back.)", false)
+        }
         if controller.reseatHintActive {
             return ("Reseated and reset — but RAM survived. If BASIC was "
                 + "loaded, type E2B3R to re-enter it with your program "
                 + "intact. (Real Apple-1s worked exactly this way.)", false)
+        }
+        if controller.powered, controller.cpuVariant == .m6800 {
+            return ("The 6800 configuration: clock parts installed, "
+                + "bridges broken, terminal blinking — but the PROMs "
+                + "hold 6502 code and no 6800 monitor was ever written. "
+                + "It waits forever for software that never existed. "
+                + "(Machine ▸ Processor swaps back.)", false)
         }
         if controller.typingHintActive {
             if !controller.connected.contains(.keyboard) {

@@ -200,9 +200,12 @@ struct ChipView: View {
                 }
                 .shadow(color: .black.opacity(0.35), radius: 2, x: 1, y: 2)
             case .whiteCeramic:
+                let m6800 = chip.group == .cpu
+                    && controller.cpuVariant == .m6800
                 ZStack {
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Color(red: 0.89, green: 0.87, blue: 0.81))
+                        .fill(m6800 ? Color(white: 0.16)
+                              : Color(red: 0.89, green: 0.87, blue: 0.81))
                         .overlay(RoundedRectangle(cornerRadius: 2)
                             .fill(Color(red: 1.0, green: 0.55, blue: 0.1).opacity(lit * 0.55)))
                         .shadow(color: Color(red: 1.0, green: 0.6, blue: 0.1).opacity(lit * 0.9),
@@ -211,7 +214,7 @@ struct ChipView: View {
                         .fill(PCB.gold.opacity(0.9))
                         .frame(width: chip.frame.width * 0.30,
                                height: chip.frame.height * 0.62)
-                    Text(chip.label)
+                    Text(m6800 ? "MC6800" : chip.label)
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundStyle(Color(red: 0.25, green: 0.18, blue: 0.05))
                 }

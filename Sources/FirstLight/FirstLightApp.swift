@@ -50,6 +50,13 @@ struct FirstLightApp: App {
                     Text("Turbo ×10").tag(10)
                     Text("Turbo ×100").tag(100)
                 }
+                Picker("Processor", selection: Binding(
+                    get: { controller.cpuVariant },
+                    set: { controller.cpuVariant = $0 })) {
+                    Text("MOS 6502 — as shipped").tag(MachineController.CPUVariant.mos6502)
+                    Text("Motorola 6800 — the option that never ran")
+                        .tag(MachineController.CPUVariant.m6800)
+                }
                 Divider()
                 Menu("Sound") {
                     Toggle("Sound", isOn: Binding(
@@ -104,9 +111,7 @@ struct FirstLightApp: App {
                 Toggle("CRT Effects", isOn: Binding(
                     get: { controller.crtEffects },
                     set: { controller.crtEffects = $0 }))
-                Toggle("Populate the 6800 Option Field", isOn: Binding(
-                    get: { controller.populate6800 },
-                    set: { controller.populate6800 = $0 }))
+
                 Toggle("Footprint Audit Overlay", isOn: Binding(
                     get: { controller.showAudit },
                     set: { controller.showAudit = $0 }))

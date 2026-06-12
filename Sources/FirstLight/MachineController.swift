@@ -289,10 +289,21 @@ final class MachineController {
     /// clean, crisp display: the showcase becomes a plain emulator.
     var crtEffects = true
 
-    /// Populate the (6800 ONLY) option field — the components a
-    /// Motorola 6800 build would have needed. Pure what-if: no 6800
-    /// Apple-1 was ever shipped.
-    var populate6800 = false
+    enum CPUVariant: String { case mos6502, m6800 }
+
+    /// The processor in the socket. Swapping to the 6800 populates the
+    /// dotted-box parts and the (6800 ONLY) 7404 — and the machine
+    /// goes silent, authentically: no 6800 firmware was ever written.
+    var cpuVariant: CPUVariant = .mos6502 {
+        didSet {
+            guard cpuVariant != oldValue else { return }
+            machine.clearTerminal()
+            machine.reset()
+            displayRevision += 1
+        }
+    }
+
+    var populate6800: Bool { cpuVariant == .m6800 }
 
     /// T5: CPU speed multiplier. 1 = the authentic 1.023 MHz (default);
     /// 10/100 = the modern impatience valve. The display still draws at
@@ -395,7 +406,7 @@ final class MachineController {
     }
 
     private func tick() {
-        if running {
+        if running && cpuVariant == .mos6502 {
             // The app "typing" for the tutorial, at a human ~20 cps.
             if !autoTypeQueue.isEmpty, frame % 3 == 0 {
                 machine.press(autoTypeQueue.removeFirst())
