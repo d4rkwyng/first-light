@@ -13,6 +13,11 @@ public enum ROM {
         try load("wozmon")
     }
 
+    /// The Apple Cassette Interface ROM ($C100, 256 bytes) — Woz, 1976.
+    public static func wozaci() throws -> [UInt8] {
+        try load("wozaci")
+    }
+
     /// Apple Integer BASIC ("Apple 1 BASIC"), 4 KB, loads at $E000;
     /// start with E000R, warm-restart at E2B3R.
     ///

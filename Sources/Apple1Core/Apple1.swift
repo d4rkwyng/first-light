@@ -48,6 +48,61 @@ public final class Apple1 {
     public var piaInstalled = true
     public var videoInstalled = true
 
+    /// The Apple Cassette Interface: its 256-byte ROM at $C100, with
+    /// the famous input trick at $C0xx — the tape signal drives address
+    /// bit 0, so reads return ROM bytes selected by the input level.
+    public var aciInstalled = false
+    private var aciROM: [UInt8] = []
+
+    public func installACI(rom: [UInt8]) {
+        precondition(rom.count == 256, "ACI ROM must be 256 bytes")
+        aciROM = rom
+        aciInstalled = true
+    }
+
+    // Cycle-timed tape playback for authentic ACI loads
+    private var tapeTransitions: [UInt64] = []
+    private var tapeStart: UInt64?
+    private var tapeIndex = 0
+
+    /// Queue a tape; the signal clock anchors to the FIRST $C0xx poll,
+    /// so the ROM always hears the leader from its beginning.
+    public func armTape(bytes: [UInt8], leaderSeconds: Double = 2.5,
+                        speed: Double = 1.0, byteGapUs: Double = 0) {
+        tapeTransitions = TapeEncoding.transitions(bytes: bytes,
+                                                   leaderSeconds: leaderSeconds,
+                                                   speed: speed,
+                                                   byteGapUs: byteGapUs)
+        tapeStart = nil
+        tapeIndex = 0
+    }
+
+    /// Debug probe: current level + internals.
+    public func tapeProbe() -> (level: Int, index: Int, anchored: Bool, total: Int) {
+        (tapeLevel(), tapeIndex, tapeStart != nil, tapeTransitions.count)
+    }
+
+    public var tapePlaying: Bool {
+        !tapeTransitions.isEmpty
+            && (tapeStart == nil
+                || tapeIndex < tapeTransitions.count)
+    }
+
+    private func tapeLevel() -> Int {
+        guard !tapeTransitions.isEmpty else { return 0 }
+        if tapeStart == nil { tapeStart = totalCycles }
+        let elapsed = totalCycles - tapeStart!
+        while tapeIndex < tapeTransitions.count,
+              tapeTransitions[tapeIndex] <= elapsed {
+            tapeIndex += 1
+        }
+        if tapeIndex >= tapeTransitions.count {
+            tapeTransitions = [] // tape ran out
+            return 0
+        }
+        return tapeIndex % 2 == 0 ? 1 : 0
+    }
+
     public private(set) var totalCycles: UInt64 = 0
 
     /// Current program counter (for debugging and the future board view).
@@ -277,6 +332,13 @@ public final class Apple1 {
             case 0xE000...0xEFFF:
                 guard ramXInstalled else { return 0x00 } // empty sockets
                 activity.ramX += 1
+            case 0xC000...0xC0FF:
+                guard aciInstalled else { return 0xFF }
+                // tape input drives A0: ROM byte selected by the signal
+                return aciROM[(Int(address) & 0xFE | tapeLevel()) & 0xFF]
+            case 0xC100...0xC1FF:
+                guard aciInstalled else { return 0xFF }
+                return aciROM[Int(address) & 0xFF]
             case 0xFF00...0xFFFF:
                 guard romInstalled else { return 0xFF } // floating vector
                 activity.rom += 1

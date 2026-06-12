@@ -18,30 +18,36 @@ enum TapeDecoder {
         let rate = file.processingFormat.sampleRate
         let n = Int(buffer.frameLength)
 
-        // full-cycle durations in µs via positive-going zero crossings
-        var cycles: [Double] = []
+        // HALF-period durations via every zero crossing — matching the
+        // strict-alternation encoding (leader 565/455, sync 385, bit
+        // halves 250 ("1") / 500 ("0")).
+        var halves: [Double] = []
         var lastCross = -1
         var prev = data[0]
         for i in 1..<n {
             let cur = data[i]
-            if prev <= 0, cur > 0 {
+            if (prev <= 0) != (cur <= 0) {
                 if lastCross >= 0 {
-                    cycles.append(Double(i - lastCross) / rate * 1_000_000)
+                    halves.append(Double(i - lastCross) / rate * 1_000_000)
                 }
                 lastCross = i
             }
             prev = cur
         }
 
-        // leader: ~1 kHz cycles. Data: "1" ≈ 500 µs, "0" ≈ 1000 µs.
-        // The leader/0 ambiguity resolves at the first SHORT cycle —
-        // everything after it is data (skip the merged sync cycle).
-        guard let firstShort = cycles.firstIndex(where: { $0 < 720 })
-        else { throw DecodeError.noData }
+        // skip the leader, find the sync phase (~385 µs)
+        var i = 0
+        while i < halves.count, !(330...430).contains(halves[i]) { i += 1 }
+        guard i < halves.count else { throw DecodeError.noData }
+        i += 1 // past sync
+        // read bit halves in pairs; the postamble's long leader-like
+        // phases produce <8 stray bits that the %8 trim discards
         var bits: [Bool] = []
-        for cycle in cycles[(firstShort + 1)...] {
-            guard cycle < 1500 else { break } // trailing silence/noise
-            bits.append(cycle < 720)
+        while i + 1 < halves.count {
+            let a = halves[i]
+            guard a < 620 else { break } // postamble reached
+            bits.append(a < 330)
+            i += 2
         }
         var bytes: [UInt8] = []
         for chunk in stride(from: 0, to: bits.count - bits.count % 8, by: 8) {

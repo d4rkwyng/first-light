@@ -1,4 +1,5 @@
 import AVFoundation
+import Apple1Core
 
 /// All of the bench's sounds, synthesized — no audio assets. A low mains
 /// hum while powered, key clicks, chip seat/eject, the power-on thunk,
@@ -133,38 +134,18 @@ final class SoundEngine {
     /// 2 kHz cycle ~500 µs, "0" = one 1 kHz cycle ~1000 µs.)
     func makeTapeAudio(bytes: [UInt8], leaderSeconds: Double) -> (AVAudioPCMBuffer, Double) {
         let rate = 44100.0
+        let phases = TapeEncoding.phases(bytes: bytes,
+                                         leaderSeconds: leaderSeconds)
         var samples: [Float] = []
-        samples.reserveCapacity(Int(rate * (leaderSeconds + 1)))
-
-        func phase(_ microseconds: Double, high: Bool) {
-            let n = Int(rate * microseconds / 1_000_000)
-            // soft square: the PIA's hard edges after a tape's head/EQ
+        samples.reserveCapacity(phases.reduce(0) { $0 + Int(rate * $1 / 1_000_000) } + 16)
+        var high = true
+        for phase in phases {
+            let n = Int(rate * phase / 1_000_000)
             for i in 0..<n {
                 let edge = min(1.0, Double(min(i, n - i)) / 6.0)
                 samples.append(Float((high ? 1.0 : -1.0) * 0.32 * edge))
             }
-        }
-        // leader: asymmetric ~1 kHz cycles (565 µs + 455 µs)
-        let leaderCycles = Int(leaderSeconds * 1_000_000 / 1020)
-        for _ in 0..<leaderCycles {
-            phase(565, high: true)
-            phase(455, high: false)
-        }
-        phase(385, high: true) // the short sync bit
-        // data: each bit one full cycle, MSB first
-        for byte in bytes {
-            for bit in (0..<8).reversed() {
-                let one = (byte >> bit) & 1 == 1
-                let half = one ? 250.0 : 500.0
-                phase(half, high: true)
-                phase(half, high: false)
-            }
-        }
-        // postamble: a few leader cycles so the last data cycle has a
-        // closing edge (real tapes trailed off in tone too)
-        for _ in 0..<3 {
-            phase(565, high: true)
-            phase(455, high: false)
+            high.toggle()
         }
         let buffer = AVAudioPCMBuffer(pcmFormat: format,
                                       frameCapacity: AVAudioFrameCount(samples.count))!

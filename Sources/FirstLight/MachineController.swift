@@ -204,6 +204,28 @@ final class MachineController {
 
     /// Stage a cassette: machine assembles, the deck spins for ~3 s with
     /// the FSK warble, then `action` performs the actual load.
+    /// Authentic ACI load: arm the tape on the bus, drive the real
+    /// ROM with typed commands, and run the program when the tape ends.
+    private func stageAuthenticACILoad(name: String, bytes: [UInt8],
+                                       load: Int, run: String) {
+        placeAll()
+        connect(.power); connect(.display); connect(.keyboard)
+        connect(.aciCard)
+        nowLoading = name
+        loadStartFrame = frame
+        tapeCounter = 0
+        insertedTapeName = name
+        machine.armTape(bytes: bytes, leaderSeconds: 2.5)
+        let duration = sound.tapePlay(bytes: bytes, authentic: true)
+        loadFinishFrame = frame + Int(duration * 60)
+        pendingLoad = nil
+        afterTapeCommand = run
+        autoType(String(format: "C100R\n%X.%XR\n",
+                        load, load + bytes.count - 1))
+    }
+
+    @ObservationIgnored private var afterTapeCommand: String?
+
     private func stageLoad(name: String, bytes: [UInt8],
                            _ action: @escaping () -> Void) {
         placeAll()
@@ -407,6 +429,10 @@ final class MachineController {
             let action = pendingLoad
             pendingLoad = nil
             action?()
+            if let run = afterTapeCommand {
+                afterTapeCommand = nil
+                autoType(run + "\n")
+            }
         }
 
         // A detuned V-HOLD or a warming tube needs continuous redraws
@@ -506,6 +532,9 @@ final class MachineController {
         // The ACI seats into the edge connector; plugs snap home
         if peripheral == .aciCard {
             sound.chipSeat()
+            if let rom = try? ROM.wozaci() {
+                machine.installACI(rom: rom)
+            }
         } else {
             sound.connectorSnap()
         }
@@ -519,6 +548,9 @@ final class MachineController {
     func disconnect(_ peripheral: Peripheral) {
         if connected.remove(peripheral) != nil {
             sound.connectorPull()
+        }
+        if peripheral == .aciCard {
+            machine.aciInstalled = false
         }
         if peripheral == .power {
             machine.powerDown()
@@ -617,6 +649,25 @@ final class MachineController {
     func insert(_ tape: Tape) {
         lastTape = tape
         lastCustomLoad = nil
+        if authenticLoads {
+            // kinds with raw bytes go through the REAL ACI ROM
+            switch tape.kind {
+            case .integerBASIC:
+                if let basic = try? ROM.integerBASIC() {
+                    stageAuthenticACILoad(name: tape.name, bytes: basic,
+                                          load: 0xE000, run: "E000R")
+                    return
+                }
+            case .binary(let file, let load, let run):
+                if let bytes = TapeLibrary.binary(file) {
+                    stageAuthenticACILoad(name: tape.name, bytes: bytes,
+                                          load: Int(load), run: run)
+                    return
+                }
+            default:
+                break // source/image tapes use the deposit path
+            }
+        }
         let bytes: [UInt8]
         switch tape.kind {
         case .integerBASIC:
