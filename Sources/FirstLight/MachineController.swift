@@ -263,6 +263,10 @@ final class MachineController {
     /// chip activity glow — behind one switch.
     var lightingEffects = true
 
+    /// CRT effects (curvature, scanlines, bloom, warm-up). Off = a
+    /// clean, crisp display: the showcase becomes a plain emulator.
+    var crtEffects = true
+
     /// T5: CPU speed multiplier. 1 = the authentic 1.023 MHz (default);
     /// 10/100 = the modern impatience valve. The display still draws at
     /// its honest 60 cps — only computation accelerates, exactly as a

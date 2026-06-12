@@ -1,33 +1,96 @@
 10 PRINT
-20 PRINT
-30 PRINT "             ##"
-40 PRINT "            ##"
-50 PRINT "           ##"
-60 PRINT "    ###### ## ######"
-70 PRINT "  ####################"
-80 PRINT " ######################"
-90 PRINT " ####################"
-100 PRINT " ###################"
+20 PRINT "        APPLE  1976 - 2026"
+30 PRINT "        FIFTY YEARS OF APPLE"
+40 PRINT
+50 PRINT "             ##"
+60 PRINT "            ##"
+70 PRINT "           ##"
+80 PRINT "    ###### ## ######"
+90 PRINT "  ####################"
+100 PRINT " ######################"
 110 PRINT " ####################"
-120 PRINT " ######################"
-130 PRINT "  ####################"
-140 PRINT "   ##################"
-150 PRINT "     ######  ######"
-160 PRINT
-170 FOR I=1 TO 800: NEXT I
-180 PRINT "      APPLE COMPUTER 1976-2026"
-190 PRINT "      FIFTY YEARS OF APPLE"
-200 PRINT
-210 FOR I=1 TO 800: NEXT I
-220 PRINT "1976 APPLE-1: 6502, 4K RAM, 666.66"
-230 PRINT "1977 APPLE II LIGHTS THE FUSE"
-240 PRINT "1984 MACINTOSH SAYS HELLO"
-250 PRINT "2001 1000 SONGS IN YOUR POCKET"
-260 PRINT "2007 THE PHONE BECOMES A COMPUTER"
-270 PRINT "2026 FIFTY YEARS FROM THIS BOARD"
+120 PRINT " ###################"
+130 PRINT " ####################"
+140 PRINT " ######################"
+150 PRINT "  ####################"
+160 PRINT "   ##################"
+170 PRINT "     ######  ######"
+180 PRINT
+190 FOR I=1 TO 2200
+200 NEXT I
+210 PRINT "1976  APPLE-1 . . . WHERE YOU ARE"
+220 PRINT
+230 PRINT "   .--------------------------."
+240 PRINT "   ! :::: :::: :::: :::: :::: !"
+250 PRINT "   ! :::: :::: :::: :::: :::: !"
+260 PRINT "   !   6502   4K RAM   666.66 !"
+270 PRINT "   '--------------------------'"
 280 PRINT
-290 FOR I=1 TO 800: NEXT I
-300 PRINT "IT ALL BOOTED FROM 256 BYTES."
-310 PRINT
-320 PRINT "HAPPY 50TH, APPLE.      FIRST LIGHT"
-330 END
+290 FOR I=1 TO 2200
+300 NEXT I
+310 PRINT "1977  APPLE ][ LIGHTS THE FUSE"
+320 PRINT
+330 PRINT "      ._______________."
+340 PRINT "      !  ###########  !"
+350 PRINT "      !  ###########  !"
+360 PRINT "      !_______________!"
+370 PRINT "     /=================\"
+380 PRINT "    /===================\"
+390 PRINT "    '-------------------'"
+400 PRINT
+410 FOR I=1 TO 2200
+420 NEXT I
+430 PRINT "1984  MACINTOSH SAYS HELLO"
+440 PRINT
+450 PRINT "       .-------------."
+460 PRINT "       ! .---------. !"
+470 PRINT "       ! !  HELLO. ! !"
+480 PRINT "       ! '---------' !"
+490 PRINT "       !     ---     !"
+500 PRINT "       ! .         . !"
+510 PRINT "       '-------------'"
+520 PRINT
+530 FOR I=1 TO 2200
+540 NEXT I
+550 PRINT "2001  1000 SONGS IN YOUR POCKET"
+560 PRINT
+570 PRINT "         .---------."
+580 PRINT "         ! ....... !"
+590 PRINT "         ! : :=: : !"
+600 PRINT "         ! ''''''' !"
+610 PRINT "         !   .-.   !"
+620 PRINT "         !  ( = )  !"
+630 PRINT "         !   '-'   !"
+640 PRINT "         '---------'"
+650 PRINT
+660 FOR I=1 TO 2200
+670 NEXT I
+680 PRINT "2007  THE PHONE BECOMES A COMPUTER"
+690 PRINT
+700 PRINT "          .-------."
+710 PRINT "          ! ===== !"
+720 PRINT "          ! ##### !"
+730 PRINT "          ! ##### !"
+740 PRINT "          ! ===== !"
+750 PRINT "          !  (.)  !"
+760 PRINT "          '-------'"
+770 PRINT
+780 FOR I=1 TO 2200
+790 NEXT I
+800 PRINT "2017  APPLE PARK - THE RING"
+810 PRINT
+820 PRINT "          .#####."
+830 PRINT "         ##     ##"
+840 PRINT "        ##       ##"
+850 PRINT "        ##       ##"
+860 PRINT "         ##     ##"
+870 PRINT "          '#####'"
+880 PRINT
+890 FOR I=1 TO 2200
+900 NEXT I
+910 PRINT "2026  FIFTY YEARS FROM THIS BOARD"
+920 PRINT
+930 PRINT "IT ALL BOOTED FROM 256 BYTES."
+940 PRINT
+950 PRINT "HAPPY 50TH, APPLE.      FIRST LIGHT"
+960 END

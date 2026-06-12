@@ -67,18 +67,21 @@ struct TerminalView: View {
         // T7: the real tube — Metal barrel curvature, raster-locked
         // scanlines, bloom and vignette in one pass. Canvas fallback
         // when the metallib isn't available.
-        .modifier(CRTGlassModifier())
-        .clipShape(RoundedRectangle(cornerRadius: 14)) // tube-glass corners
+        .modifier(CRTGlassModifier(controller: controller))
+        .clipShape(RoundedRectangle(
+            cornerRadius: controller.crtEffects ? 14 : 4))
         .overlay {
-            LinearGradient(colors: [.white.opacity(0.045), .clear, .clear],
-                           startPoint: .topLeading, endPoint: .center)
-                .allowsHitTesting(false)
+            if controller.crtEffects {
+                LinearGradient(colors: [.white.opacity(0.045), .clear, .clear],
+                               startPoint: .topLeading, endPoint: .center)
+                    .allowsHitTesting(false)
+            }
         }
         // Phosphor warm-up: dim and slightly bloomy until the tube heats
-        .opacity(0.25 + 0.75 * controller.crtWarmth)
+        .opacity(controller.crtEffects ? 0.25 + 0.75 * controller.crtWarmth : 1)
         .brightness(controller.crtBrightness * 0.25
-                    - (1 - controller.crtWarmth) * 0.18)
-        .blur(radius: (1 - controller.crtWarmth) * 1.6)
+                    - (controller.crtEffects ? (1 - controller.crtWarmth) * 0.18 : 0))
+        .blur(radius: controller.crtEffects ? (1 - controller.crtWarmth) * 1.6 : 0)
         .contrast(1 + controller.crtContrast * 0.5)
         .aspectRatio(40.0 * 7.0 / (24.0 * 9.0), contentMode: .fit)
         .padding(8)
@@ -90,8 +93,12 @@ struct TerminalView: View {
 
 /// Applies the Metal CRT pass when available, else the Canvas look.
 struct CRTGlassModifier: ViewModifier {
+    let controller: MachineController
+
     func body(content: Content) -> some View {
-        if let library = crtShaderLibrary {
+        if !controller.crtEffects {
+            content // clean pixels: the pure emulator
+        } else if let library = crtShaderLibrary {
             content.visualEffect { view, proxy in
                 view.layerEffect(
                     library.crt(.float2(proxy.size),
