@@ -263,10 +263,10 @@ T5. **Turbo mode.** CPU at 10x/100x with authentic speed as default and
 T6. **Machine state snapshots.** Save/restore the whole machine (RAM,
     CPU regs, screen) — freeze a Microchess game, resume tomorrow.
 
-T7. **Metal CRT shader.** BLOCKED on CLT-only setup (no `metal`
-    compiler without full Xcode). Shipped the Canvas edition: scanlines,
-    vignette, tube-glass corner rounding. True curvature + persistence
-    when Xcode lands (also prerequisite for iPad/visionOS).
+T7. **Metal CRT shader.** DONE (Xcode installed): barrel curvature,
+    raster-locked scanlines, bloom, vignette via layerEffect; Canvas
+    fallback kept for CLT-only builds. Remaining someday: phosphor
+    persistence (needs frame history), NTSC artifact simulation.
 
 T8. **Known-bug sweep.** Keyboard auto-repeat behavior research (real
     Datanetics had none), CTRL key function, fullscreen edge cases,
