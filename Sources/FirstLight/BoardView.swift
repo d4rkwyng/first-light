@@ -112,7 +112,6 @@ struct BoardView: View {
             "8T97": "Hex bus drivers — buffer the 6502's address lines to the rest of the board.",
             "9316": "4-bit counters — more of the video timing chain.",
             "555": "The 555 timer — it blinks the @ cursor.",
-            "74166 ": "Shift register.",
         ]
         func v(_ id: String, _ name: String, _ colN: Double, _ row: String,
                region: MachineController.Region? = .video,

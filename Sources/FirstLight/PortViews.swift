@@ -91,15 +91,9 @@ struct PortView: View {
                         }
                     }
                     .offset(pull)
-            } else {
-                let pinViews = ForEach(0..<pins, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(Color.black.opacity(0.55))
-                        .frame(width: vertical ? 9 : 4, height: vertical ? 4 : 9)
-                }
-                if vertical { VStack(spacing: 5) { pinViews } }
-                else { HStack(spacing: 5) { pinViews } }
             }
+            // when disconnected, the base overlay's slots already show the
+            // empty connector — no second pin layer (it double-darkened them)
         }
     }
 

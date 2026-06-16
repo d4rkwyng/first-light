@@ -15,7 +15,6 @@ struct ChipView: View {
     private var powered: Bool { controller.powered }
 
     var body: some View {
-        let lit = powered ? glow : 0
         if !present {
             let vertical = chip.frame.height > chip.frame.width
             ZStack {
@@ -51,6 +50,7 @@ struct ChipView: View {
                 }
             }
         } else {
+            let lit = powered ? glow : 0 // only the present chip reads the glow
             switch chip.style {
             case .heatsink:
                 // The Copson configuration: black radial-fin heatsink
@@ -253,11 +253,6 @@ struct ChipView: View {
         }
     }
 }
-
-/// Pin-leg ticks along a DIP's long edges.
-/// Pins per side from real DIP body lengths (design px @ 64/in):
-/// DIP-8 <30, DIP-14/16 ~42-50 → 8, DIP-18 ~58 → 9, DIP-24 ~80 → 12,
-/// DIP-40 ~131 → 20.
 
 /// Pin-leg ticks along a DIP's long edges.
 /// Pins per side from real DIP body lengths (design px @ 64/in):

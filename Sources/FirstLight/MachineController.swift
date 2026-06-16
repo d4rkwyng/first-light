@@ -392,7 +392,6 @@ final class MachineController {
     /// through the zero vector" crash. Real Apple-1s did exactly this.
     private(set) var looksCrashed = false
 
-    var allPlaced: Bool { placed.count == ChipGroup.allCases.count }
     var essentialsPlaced: Bool {
         ChipGroup.allCases.filter(\.essential).allSatisfy(placed.contains)
     }
@@ -453,8 +452,7 @@ final class MachineController {
                 silentLowFrames += 1
                 if silentLowFrames == 121 { looksCrashed = true }
             } else {
-                silentLowFrames = 0
-        if looksCrashed { looksCrashed = false }
+                clearCrashState()
             }
             videoChars = 0
         } else {
@@ -837,23 +835,6 @@ final class MachineController {
             machine.displayCyclesPerChar = Apple1.cyclesPerFrame
             autoType("RUN\n")
         }
-    }
-
-    /// Parse wozmon paste format: lines of "XXXX: HH HH HH ...".
-    private func wozmonChunks(_ text: String) -> [(UInt16, [UInt8])] {
-        var chunks: [(UInt16, [UInt8])] = []
-        for line in text.split(whereSeparator: \.isNewline) {
-            let parts = line.split(separator: ":")
-            guard parts.count == 2,
-                  let address = UInt16(parts[0].trimmingCharacters(in: .whitespaces),
-                                       radix: 16) else { continue }
-            let bytes = parts[1].split(separator: " ").compactMap {
-                UInt8($0, radix: 16)
-            }
-            guard !bytes.isEmpty else { continue }
-            chunks.append((address, bytes))
-        }
-        return chunks
     }
 
     /// Most recent keypress (from either keyboard) — the on-screen
