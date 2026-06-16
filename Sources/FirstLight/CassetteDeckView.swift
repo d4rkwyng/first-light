@@ -102,16 +102,11 @@ struct TapeDeckBar: View {
         .frame(minWidth: 330, maxWidth: 470)
         .animation(.spring(response: 0.4, dampingFraction: 0.8),
                    value: controller.insertedTapeName != nil)
+        // One deck gesture: double-click opens the cassette library (the
+        // grouped, blurb-rich chooser). The menu-bar Cassettes menu is the
+        // full surface; the old right-click menu was a redundant, ungrouped
+        // third path, so it's gone.
         .onTapGesture(count: 2) { showChooser = true }
-        .contextMenu {
-            ForEach(TapeLibrary.tapes) { tape in
-                Button(tape.name) { controller.insert(tape) }
-            }
-            Divider()
-            Button("Load Custom Cassette…") {
-                controller.customTapeRequested = true
-            }
-        }
         .popover(isPresented: $showChooser, arrowEdge: .top) {
             TapeChooser(controller: controller, dismiss: { showChooser = false })
         }
