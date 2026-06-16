@@ -1,9 +1,29 @@
 #!/bin/zsh
 # Builds First Light.app from the SwiftPM FirstLight executable.
 # Output: dist/First Light.app
-# Usage: Scripts/build-app.sh [--install]   (--install copies to /Applications)
+# Usage: Scripts/build-app.sh [--clean] [--install]
+#   --clean    rm -rf .build first — forces a full rebuild. Use before a
+#              release or if a run shows stale behavior: SwiftPM's incremental
+#              build can occasionally serve a stale binary (seen after a branch
+#              switch + large edit batch).
+#   --install  also copy the finished bundle to /Applications
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+CLEAN=0
+INSTALL=0
+for arg in "$@"; do
+    case "$arg" in
+        --clean)   CLEAN=1 ;;
+        --install) INSTALL=1 ;;
+        *) echo "unknown option: $arg (use --clean and/or --install)" >&2; exit 2 ;;
+    esac
+done
+
+if (( CLEAN )); then
+    echo "clean build: removing .build…"
+    rm -rf .build
+fi
 
 swift build -c release --product FirstLight
 BUILD_DIR=$(swift build -c release --show-bin-path)
@@ -60,7 +80,7 @@ swift Tools/seticon.swift dist/AppIcon.iconset/icon_512x512@2x.png "$APP" || tru
 echo "built $APP"
 echo "(icon stale? run: killall Dock Finder)"
 
-if [[ "${1:-}" == "--install" ]]; then
+if (( INSTALL )); then
     rm -rf "/Applications/First Light.app"
     cp -R "$APP" /Applications/
     echo "installed to /Applications/First Light.app"
