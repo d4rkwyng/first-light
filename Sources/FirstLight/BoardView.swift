@@ -67,16 +67,18 @@ struct BoardView: View {
 
     static let designSize = CGSize(width: 1000, height: 582)
 
-    /// Center x of diagram column n (1...18).
-    static func col(_ n: Double) -> Double { 51 * n - 18 }
+    /// Center x of diagram column n (1...18). `nonisolated`: pure functions
+    /// over immutable constants, read by the nonisolated `chips`/`ports`
+    /// static initializers below.
+    nonisolated static func col(_ n: Double) -> Double { 51 * n - 18 }
     /// Row center y for D/C/B/A.
-    static let rowCenters: [(String, Double)] =
+    nonisolated static let rowCenters: [(String, Double)] =
         [("D", 116), ("C", 236), ("B", 362), ("A", 495)]
-    static func rowY(_ row: String) -> Double {
+    nonisolated static func rowY(_ row: String) -> Double {
         rowCenters.first { $0.0 == row }!.1
     }
 
-    static let vSize = CGSize(width: 26, height: 58)
+    nonisolated static let vSize = CGSize(width: 26, height: 58)
 
     // MARK: Layout (from the placement diagram)
 
@@ -656,9 +658,22 @@ struct BoardView: View {
                     .animation(.spring(response: 0.32, dampingFraction: 0.5),
                                value: present)
                     .onHover { inside in
+                        // The CPU chip face flips to MC6800 in the what-if —
+                        // its tooltip must follow, not keep describing the 6502.
+                        let m6800CPU = chip.group == .cpu
+                            && controller.cpuVariant == .m6800
+                        let label = m6800CPU ? "MC6800" : chip.label
+                        let info = m6800CPU
+                            ? "The Motorola 6800 — the OTHER processor this board "
+                              + "could take. Same job as the 6502 but a different "
+                              + "instruction set, so it needs its own firmware: the "
+                              + "Woz Monitor PROMs hold 6502 code, and no 6800 "
+                              + "monitor was ever written for the Apple-1. It sits "
+                              + "powered but silent."
+                            : chip.info
                         controller.hoverInfo = inside
-                            ? (present ? "\(chip.label) — \(chip.info)"
-                               : "Empty \(chip.label) socket — "
+                            ? (present ? "\(label) — \(info)"
+                               : "Empty \(label) socket — "
                                  + (chip.group?.blurb ?? ""))
                             : nil
                         if inside {

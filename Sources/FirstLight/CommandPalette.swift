@@ -87,6 +87,7 @@ struct CommandPaletteView: View {
                     ForEach(filtered) { action in
                         PaletteRow(action: action) {
                             dismiss()
+                            controller.ensure6502() // palette commands are 6502 syntax
                             action.perform(controller)
                         }
                     }

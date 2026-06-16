@@ -57,6 +57,7 @@ struct FirstLightApp: App {
                     Text("Motorola 6800 — the option that never ran")
                         .tag(MachineController.CPUVariant.m6800)
                 }
+                .disabled(controller.nowLoading != nil) // don't swap mid-load
                 Divider()
                 Menu("Sound") {
                     Toggle("Sound", isOn: Binding(

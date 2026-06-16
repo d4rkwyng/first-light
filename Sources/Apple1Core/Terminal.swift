@@ -29,8 +29,10 @@ public struct Terminal {
                                  transcript log: String) {
         guard newScreen.count == screen.count else { return }
         screen = newScreen
-        cursorX = cx
-        cursorY = cy
+        // Clamp to the grid: a corrupt/hand-edited snapshot must never
+        // drive the out-of-bounds write in `put`.
+        cursorX = min(max(cx, 0), Self.columns - 1)
+        cursorY = min(max(cy, 0), Self.rows - 1)
         transcript = log
         revision += 1
     }

@@ -213,6 +213,7 @@ public final class Apple1 {
     }
 
     public func restore(_ snap: Snapshot) {
+        guard snap.mem.count == 0x10000 else { return } // reject a corrupt image
         mem = [UInt8](snap.mem)
         fake6502_restore(snap.a, snap.x, snap.y, snap.sp, snap.status, snap.pc)
         totalCycles = snap.totalCycles

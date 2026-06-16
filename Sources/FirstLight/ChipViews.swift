@@ -216,7 +216,8 @@ struct ChipView: View {
                                height: chip.frame.height * 0.62)
                     Text(m6800 ? "MC6800" : chip.label)
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color(red: 0.25, green: 0.18, blue: 0.05))
+                        .foregroundStyle(m6800 ? Color(white: 0.82)
+                                         : Color(red: 0.25, green: 0.18, blue: 0.05))
                 }
                 .overlay(PinTicks(dark: true, vertical: false))
             case .lightDip:

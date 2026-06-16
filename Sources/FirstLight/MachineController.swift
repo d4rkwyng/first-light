@@ -154,6 +154,7 @@ final class MachineController {
         insertedTapeName = nil
         lastTape = nil
         lastCustomLoad = nil
+        afterTapeCommand = nil
         sound.chipEject()
     }
 
@@ -163,6 +164,7 @@ final class MachineController {
 
     /// PLAY: run the inserted cassette again, tape sound and all.
     func playInsertedTape() {
+        ensure6502()
         if let tape = lastTape {
             insert(tape)
         } else if let custom = lastCustomLoad {
@@ -177,9 +179,7 @@ final class MachineController {
     /// exactly like stopping a real tape too early.
     func stopTape() {
         guard nowLoading != nil else { return }
-        nowLoading = nil
-        pendingLoad = nil
-        sound.tapeStop()
+        cancelInFlightLoad() // also flushes the queued run command (L3)
         sound.chipEject()
     }
 
@@ -297,6 +297,8 @@ final class MachineController {
     var cpuVariant: CPUVariant = .mos6502 {
         didSet {
             guard cpuVariant != oldValue else { return }
+            cancelInFlightLoad() // a swap aborts any load in progress
+            clearCrashState()
             machine.clearTerminal()
             machine.reset()
             displayRevision += 1
@@ -305,10 +307,34 @@ final class MachineController {
 
     var populate6800: Bool { cpuVariant == .m6800 }
 
+    /// Put the 6502 back in the socket. A no-op when it's already there;
+    /// from the 6800 what-if, the didSet flushes load/crash state and resets.
+    /// Called by every user action that means "run 6502 software" so the
+    /// what-if can never strand a load or swallow keystrokes.
+    func ensure6502() { cpuVariant = .mos6502 }
+
+    /// Abort any cassette load in progress and flush the autotype queue —
+    /// the shared cleanup behind reset/power-off/STOP/processor-swap.
+    private func cancelInFlightLoad() {
+        autoTypeQueue.removeAll()
+        if nowLoading != nil { sound.tapeStop() }
+        nowLoading = nil
+        pendingLoad = nil
+        afterTapeCommand = nil
+    }
+
+    /// Clear the "ran into garbage" crash heuristic.
+    private func clearCrashState() {
+        silentLowFrames = 0
+        if looksCrashed { looksCrashed = false }
+    }
+
     /// T5: CPU speed multiplier. 1 = the authentic 1.023 MHz (default);
-    /// 10/100 = the modern impatience valve. The display still draws at
-    /// its honest 60 cps — only computation accelerates, exactly as a
-    /// faster CPU would have behaved.
+    /// 10/100 = the modern impatience valve. The display governor is
+    /// measured in CPU cycles, so under turbo the on-screen crawl speeds
+    /// up too — which is the whole point for print-heavy programs. (Real
+    /// hardware held 60 cps via the 60 Hz video field regardless of clock;
+    /// turbo is an intentional anachronism, like the 100× clock itself.)
     var turboFactor = 1
 
     /// T9: the CRT's 15.7 kHz whine — authentic, optional, default off
@@ -487,6 +513,7 @@ final class MachineController {
     func startTutorial() {
         // You brought home an assembled board (the Byte Shop insisted) —
         // but power, keyboard, monitor and case were your problem.
+        ensure6502() // the tour is a 6502 experience start to finish
         placeAll()
         for p in Peripheral.allCases { disconnect(p) }
         tutorialStep = 0
@@ -511,6 +538,7 @@ final class MachineController {
 
     func runStepAction() {
         guard let step = tutorialStep else { return }
+        ensure6502() // a mid-tour processor swap shouldn't strand "Show me"
         tutorialSteps[step].action?(self)
     }
 
@@ -572,9 +600,8 @@ final class MachineController {
             machine.powerDown()
             sound.powerOff()
             poweredFrame = nil
-            autoTypeQueue.removeAll()
-            silentLowFrames = 0
-        if looksCrashed { looksCrashed = false }
+            cancelInFlightLoad()
+            clearCrashState()
         }
     }
 
@@ -624,6 +651,7 @@ final class MachineController {
         placed.remove(group)
         sound.chipEject()
         syncSockets()
+        if group == .cpu { clearCrashState() } // a pulled CPU isn't "crashed"
         recentlyRemoved[group] = frame
     }
 
@@ -648,6 +676,7 @@ final class MachineController {
 
     /// Set up whatever the program needs, then type it in on-screen.
     func run(_ program: DemoProgram) {
+        ensure6502() // running software means the 6502 goes back in
         placeAll()
         connect(.power); connect(.display); connect(.keyboard)
         if program.needsBASIC {
@@ -663,6 +692,7 @@ final class MachineController {
     /// 1976 did (binaries at their address, BASIC games typed in fast),
     /// and runs it.
     func insert(_ tape: Tape) {
+        ensure6502()
         lastTape = tape
         lastCustomLoad = nil
         if authenticLoads {
@@ -740,6 +770,7 @@ final class MachineController {
     /// raw .bin (loads at $0300, or at the address in a "name@0280.bin"
     /// style filename; runs from the load address).
     func insertCustom(url: URL) {
+        ensure6502()
         let title = url.deletingPathExtension().lastPathComponent
         let ext = url.pathExtension.lowercased()
         if ["wav", "aif", "aiff", "mp3", "m4a"].contains(ext) {
@@ -877,9 +908,15 @@ final class MachineController {
         panel.allowedContentTypes = [.plainText]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try? text.write(to: url, atomically: true, encoding: .utf8)
-        let wavURL = url.deletingPathExtension().deletingPathExtension()
-            .appendingPathExtension("wav")
-        try? sound.writeTapeWAV(bytes: bytes, to: wavURL)
+        // Only a single contiguous range round-trips faithfully as one .wav
+        // (a flat stream has no addresses; no real tape concatenated two
+        // non-contiguous ranges). Multi-range tapes keep just the .woz.txt,
+        // which preserves each range and warm-restarts BASIC correctly.
+        if ranges.count == 1 {
+            let wavURL = url.deletingPathExtension().deletingPathExtension()
+                .appendingPathExtension("wav")
+            try? sound.writeTapeWAV(bytes: bytes, to: wavURL)
+        }
         sound.tapeLoad() // a little record-head chirp for the moment
         insertedTapeName = name.uppercased()
     }
@@ -890,13 +927,15 @@ final class MachineController {
         var machine: Apple1.Snapshot
         var placed: [String]
         var connected: [String]
+        var cpuVariant: String? // optional: snapshots predating the 6800 swap
     }
 
     func saveSnapshot() {
         let state = BenchState(
             machine: machine.takeSnapshot(),
             placed: placed.map(\.rawValue),
-            connected: connected.map(\.rawValue))
+            connected: connected.map(\.rawValue),
+            cpuVariant: cpuVariant.rawValue)
         guard let data = try? JSONEncoder().encode(state) else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Apple-1 Session.a1state"
@@ -908,19 +947,39 @@ final class MachineController {
     func restoreSnapshot() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url,
               let data = try? Data(contentsOf: url),
-              let state = try? JSONDecoder().decode(BenchState.self, from: data)
-        else { return }
+              let state = try? JSONDecoder().decode(BenchState.self, from: data),
+              state.machine.mem.count == 0x10000,
+              state.machine.screen.count == Terminal.columns * Terminal.rows
+        else { return } // reject a corrupt/foreign file before touching live state
         placed = Set(state.placed.compactMap(ChipGroup.init(rawValue:)))
         connected = Set(state.connected.compactMap(Peripheral.init(rawValue:)))
+        // Set the variant BEFORE restoring: the didSet resets/clears, then
+        // machine.restore overwrites with the saved mem/regs/screen.
+        cpuVariant = CPUVariant(rawValue: state.cpuVariant ?? "") ?? .mos6502
         syncSockets()
+        // Re-derive ACI from `connected` the way syncSockets does for the
+        // other sockets — otherwise the card's bus behavior desyncs.
+        if connected.contains(.aciCard), let rom = try? ROM.wozaci() {
+            machine.installACI(rom: rom)
+        } else {
+            machine.aciInstalled = false
+        }
         machine.restore(state.machine)
+        // Anchor the warm-up clocks so a restored-powered tube actually
+        // warms (instead of pinning cold and forcing a redraw every frame).
+        if connected.contains(.power) {
+            poweredFrame = frame
+            if monitorOn { monitorOnFrame = frame }
+        }
         displayRevision += 1
     }
 
     /// ⌘V: type the clipboard into the machine, 1976-style.
     func paste() {
+        ensure6502()
         guard powered, connected.contains(.keyboard),
               let text = NSPasteboard.general.string(forType: .string) else { return }
         autoType(String(text.prefix(2000)))
@@ -976,8 +1035,7 @@ final class MachineController {
 
     func reset() {
         guard powered else { return }
-        silentLowFrames = 0
-        if looksCrashed { looksCrashed = false }
+        clearCrashState()
         machine.reset()
     }
 
@@ -986,6 +1044,7 @@ final class MachineController {
     /// Resets first so it works from any state, including a crashed CPU
     /// or a runaway program.
     func loadBASIC() {
+        ensure6502()
         guard powered, connected.contains(.aciCard), placed.contains(.ramX),
               let basic = try? ROM.integerBASIC() else { return }
         reset()
