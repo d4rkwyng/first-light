@@ -225,7 +225,7 @@ enum Tutorial {
             isComplete: { _, new in new.contains("HELLO FROM 1976") }),
         TutorialStep(
             title: "The 1976 software library",
-            body: "Eight cassettes existed. Open the Cassettes menu and pick "
+            body: "Nine cassettes existed. Open the Cassettes menu and pick "
                 + "one — Hamurabi is a kingdom-management game from before "
                 + "that genre had a name. The deck spins, the tape squeals, "
                 + "the program runs.",

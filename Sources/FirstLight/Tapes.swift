@@ -62,9 +62,8 @@ enum TapeLibrary {
              + "by mail order."),
         Tape(name: "Life",
              kind: .binary(file: "life", load: 0x0280, run: "400R"),
-             blurb: "Conway's Game of Life, breeding on a 1976 screen. "
-             + "Came with the machine — emergence at 60 characters a "
-             + "second."),
+             blurb: "Conway's Game of Life, breeding on a 1976 screen — "
+             + "emergence at 60 characters a second."),
         Tape(name: "Blackjack",
              kind: .basicImage(file: "blackjack", load: 0x0800),
              blurb: "Hit or stand — the dealer lives in 2 KB. Published "

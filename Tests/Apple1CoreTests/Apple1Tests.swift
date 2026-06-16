@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import Apple1Core
 
 /// Run until the transcript contains `needle` or the cycle budget runs out.
@@ -111,5 +112,42 @@ func runUntil(_ machine: Apple1, contains needle: String,
         #expect(t.line(0).hasPrefix("HELLO("))
         for _ in 0..<30 { t.put(0x0D) }
         #expect(t.cursorY == Terminal.rows - 1)
+    }
+
+    @Test func snapshotRoundTripsMachineState() throws {
+        let m = try Apple1()
+        m.type("300: A9 7E\n")
+        runUntil(m, contains: "0300: A9")
+        let snap = m.takeSnapshot()
+        let savedPC = m.registers.pc
+        m.load([0x00, 0x00], at: 0x0300) // diverge from the snapshot
+        #expect(m.peek(0x0300) == 0x00)
+        m.restore(snap)
+        #expect(m.peek(0x0300) == 0xA9)
+        #expect(m.peek(0x0301) == 0x7E)
+        #expect(m.registers.pc == savedPC)
+        #expect(m.terminal.line(0).contains("\\"))
+    }
+
+    @Test func restoreRejectsCorruptMemoryImage() throws {
+        // A truncated/hand-edited .a1state must be rejected, not crash with
+        // an out-of-bounds access on the next bus read.
+        let m = try Apple1()
+        m.type("300: A9 42\n")
+        runUntil(m, contains: "0300: A9")
+        var bad = m.takeSnapshot()
+        bad.mem = Data([0x00, 0x01, 0x02]) // wrong size
+        m.restore(bad) // guarded — state preserved
+        #expect(m.peek(0x0300) == 0xA9)
+    }
+
+    @Test func terminalRestoreClampsOutOfRangeCursor() throws {
+        var t = Terminal()
+        let screen = [UInt8](repeating: 0x20, count: Terminal.columns * Terminal.rows)
+        t.restore(screen: screen, cursorX: 9999, cursorY: -5, transcript: "")
+        #expect(t.cursorX == Terminal.columns - 1)
+        #expect(t.cursorY == 0)
+        t.put(0x41) // would have been an out-of-bounds write before the clamp
+        #expect(t.line(0).hasSuffix("A"))
     }
 }

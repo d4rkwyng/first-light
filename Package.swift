@@ -31,5 +31,13 @@ let package = Package(
             name: "Apple1CoreTests",
             dependencies: ["Apple1Core"]
         ),
+
+        // Controller-level + 6800-feature tests. Depends on the FirstLight
+        // executable target (testable import); the tests never call start(),
+        // so no Timer / NSEvent monitor / window is created.
+        .testTarget(
+            name: "FirstLightTests",
+            dependencies: ["FirstLight"]
+        ),
     ]
 )

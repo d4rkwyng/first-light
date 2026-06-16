@@ -154,6 +154,7 @@ final class MachineController {
         insertedTapeName = nil
         lastTape = nil
         lastCustomLoad = nil
+        afterTapeCommand = nil
         sound.chipEject()
     }
 
@@ -163,6 +164,7 @@ final class MachineController {
 
     /// PLAY: run the inserted cassette again, tape sound and all.
     func playInsertedTape() {
+        ensure6502()
         if let tape = lastTape {
             insert(tape)
         } else if let custom = lastCustomLoad {
@@ -177,9 +179,7 @@ final class MachineController {
     /// exactly like stopping a real tape too early.
     func stopTape() {
         guard nowLoading != nil else { return }
-        nowLoading = nil
-        pendingLoad = nil
-        sound.tapeStop()
+        cancelInFlightLoad() // also flushes the queued run command (L3)
         sound.chipEject()
     }
 
@@ -281,6 +281,42 @@ final class MachineController {
         }
     }
 
+    /// Advance the phosphor one frame. Whenever a cell's character CHANGES —
+    /// cleared, overwritten, or scrolled — its outgoing glyph is shed as a
+    /// fresh ghost that then decays, so moving/scrolling text leaves a brief
+    /// trail (not just a clear-screen fade). Sets `phosphorActive` while any
+    /// cell is mid-fade. Off (and cleared) outside CRT-effects mode / dark tube.
+    private func updatePhosphor() {
+        guard crtEffects, powered, placed.contains(.video) else {
+            if phosphorActive {
+                for i in phosphorGlow.indices { phosphorGlow[i] = 0 }
+                phosphorActive = false
+            }
+            phosphorWasOn = false
+            return
+        }
+        let screen = machine.terminal.screen
+        if !phosphorWasOn { // just enabled: adopt the screen, don't ghost the diff
+            for i in screen.indices { phosphorPrev[i] = screen[i] }
+            phosphorWasOn = true
+        }
+        var fading = false
+        for i in screen.indices {
+            if screen[i] != phosphorPrev[i] {       // content changed here
+                if phosphorPrev[i] != 0x20 {        // shed the departing glyph
+                    phosphorGlyph[i] = phosphorPrev[i]
+                    phosphorGlow[i] = 1
+                }
+                phosphorPrev[i] = screen[i]
+            }
+            if phosphorGlow[i] > 0 {
+                phosphorGlow[i] *= 0.82 // ~¼-second fade — authentic P1 persistence
+                if phosphorGlow[i] < 0.05 { phosphorGlow[i] = 0 } else { fading = true }
+            }
+        }
+        phosphorActive = fading
+    }
+
     /// All board lighting theater — power-net surge/pulse and the
     /// chip activity glow — behind one switch.
     var lightingEffects = true
@@ -297,6 +333,8 @@ final class MachineController {
     var cpuVariant: CPUVariant = .mos6502 {
         didSet {
             guard cpuVariant != oldValue else { return }
+            cancelInFlightLoad() // a swap aborts any load in progress
+            clearCrashState()
             machine.clearTerminal()
             machine.reset()
             displayRevision += 1
@@ -305,10 +343,34 @@ final class MachineController {
 
     var populate6800: Bool { cpuVariant == .m6800 }
 
+    /// Put the 6502 back in the socket. A no-op when it's already there;
+    /// from the 6800 what-if, the didSet flushes load/crash state and resets.
+    /// Called by every user action that means "run 6502 software" so the
+    /// what-if can never strand a load or swallow keystrokes.
+    func ensure6502() { cpuVariant = .mos6502 }
+
+    /// Abort any cassette load in progress and flush the autotype queue —
+    /// the shared cleanup behind reset/power-off/STOP/processor-swap.
+    private func cancelInFlightLoad() {
+        autoTypeQueue.removeAll()
+        if nowLoading != nil { sound.tapeStop() }
+        nowLoading = nil
+        pendingLoad = nil
+        afterTapeCommand = nil
+    }
+
+    /// Clear the "ran into garbage" crash heuristic.
+    private func clearCrashState() {
+        silentLowFrames = 0
+        if looksCrashed { looksCrashed = false }
+    }
+
     /// T5: CPU speed multiplier. 1 = the authentic 1.023 MHz (default);
-    /// 10/100 = the modern impatience valve. The display still draws at
-    /// its honest 60 cps — only computation accelerates, exactly as a
-    /// faster CPU would have behaved.
+    /// 10/100 = the modern impatience valve. The display governor is
+    /// measured in CPU cycles, so under turbo the on-screen crawl speeds
+    /// up too — which is the whole point for print-heavy programs. (Real
+    /// hardware held 60 cps via the 60 Hz video field regardless of clock;
+    /// turbo is an intentional anachronism, like the 100× clock itself.)
     var turboFactor = 1
 
     /// T9: the CRT's 15.7 kHz whine — authentic, optional, default off
@@ -348,6 +410,20 @@ final class MachineController {
     private(set) var cursorVisible = true
     private var lastTerminalRevision = -1
 
+    /// T7: per-cell phosphor persistence. When a character is cleared or
+    /// scrolled away, its cell keeps glowing and fades over ~¼ second, so the
+    /// old text lingers as a ghost — the way a P1 green tube actually decayed.
+    /// `@ObservationIgnored`: the canvas redraws via `displayRevision`, not by
+    /// observing these hot per-frame arrays. Only live in CRT-effects mode.
+    @ObservationIgnored private(set) var phosphorGlow =
+        [Double](repeating: 0, count: Terminal.columns * Terminal.rows)
+    @ObservationIgnored private(set) var phosphorGlyph =
+        [UInt8](repeating: 0x20, count: Terminal.columns * Terminal.rows)
+    @ObservationIgnored private var phosphorPrev =
+        [UInt8](repeating: 0x20, count: Terminal.columns * Terminal.rows)
+    @ObservationIgnored private var phosphorActive = false
+    @ObservationIgnored private var phosphorWasOn = false
+
     // Tutorial state
     private(set) var tutorialStep: Int?
     private(set) var tutorialTrack = 0
@@ -366,7 +442,6 @@ final class MachineController {
     /// through the zero vector" crash. Real Apple-1s did exactly this.
     private(set) var looksCrashed = false
 
-    var allPlaced: Bool { placed.count == ChipGroup.allCases.count }
     var essentialsPlaced: Bool {
         ChipGroup.allCases.filter(\.essential).allSatisfy(placed.contains)
     }
@@ -427,8 +502,7 @@ final class MachineController {
                 silentLowFrames += 1
                 if silentLowFrames == 121 { looksCrashed = true }
             } else {
-                silentLowFrames = 0
-        if looksCrashed { looksCrashed = false }
+                clearCrashState()
             }
             videoChars = 0
         } else {
@@ -455,6 +529,11 @@ final class MachineController {
         if abs(vHold) > 0.08 || (powered && crtWarmth < 1) {
             displayRevision += 1
         }
+        // Phosphor ghosts: keep redrawing while anything is fading (and on the
+        // frame the last ghost clears, so it doesn't freeze mid-fade).
+        let wasFading = phosphorActive
+        updatePhosphor()
+        if phosphorActive || wasFading { displayRevision += 1 }
         if frame % 3 == 0 { pulseFrame = frame }
         updateWarmth()
         let blink = powered && placed.contains(.video) && (frame / 15) % 2 == 0
@@ -487,6 +566,7 @@ final class MachineController {
     func startTutorial() {
         // You brought home an assembled board (the Byte Shop insisted) —
         // but power, keyboard, monitor and case were your problem.
+        ensure6502() // the tour is a 6502 experience start to finish
         placeAll()
         for p in Peripheral.allCases { disconnect(p) }
         tutorialStep = 0
@@ -511,6 +591,7 @@ final class MachineController {
 
     func runStepAction() {
         guard let step = tutorialStep else { return }
+        ensure6502() // a mid-tour processor swap shouldn't strand "Show me"
         tutorialSteps[step].action?(self)
     }
 
@@ -572,9 +653,8 @@ final class MachineController {
             machine.powerDown()
             sound.powerOff()
             poweredFrame = nil
-            autoTypeQueue.removeAll()
-            silentLowFrames = 0
-        if looksCrashed { looksCrashed = false }
+            cancelInFlightLoad()
+            clearCrashState()
         }
     }
 
@@ -624,6 +704,7 @@ final class MachineController {
         placed.remove(group)
         sound.chipEject()
         syncSockets()
+        if group == .cpu { clearCrashState() } // a pulled CPU isn't "crashed"
         recentlyRemoved[group] = frame
     }
 
@@ -648,6 +729,7 @@ final class MachineController {
 
     /// Set up whatever the program needs, then type it in on-screen.
     func run(_ program: DemoProgram) {
+        ensure6502() // running software means the 6502 goes back in
         placeAll()
         connect(.power); connect(.display); connect(.keyboard)
         if program.needsBASIC {
@@ -663,6 +745,7 @@ final class MachineController {
     /// 1976 did (binaries at their address, BASIC games typed in fast),
     /// and runs it.
     func insert(_ tape: Tape) {
+        ensure6502()
         lastTape = tape
         lastCustomLoad = nil
         if authenticLoads {
@@ -740,6 +823,7 @@ final class MachineController {
     /// raw .bin (loads at $0300, or at the address in a "name@0280.bin"
     /// style filename; runs from the load address).
     func insertCustom(url: URL) {
+        ensure6502()
         let title = url.deletingPathExtension().lastPathComponent
         let ext = url.pathExtension.lowercased()
         if ["wav", "aif", "aiff", "mp3", "m4a"].contains(ext) {
@@ -808,23 +892,6 @@ final class MachineController {
         }
     }
 
-    /// Parse wozmon paste format: lines of "XXXX: HH HH HH ...".
-    private func wozmonChunks(_ text: String) -> [(UInt16, [UInt8])] {
-        var chunks: [(UInt16, [UInt8])] = []
-        for line in text.split(whereSeparator: \.isNewline) {
-            let parts = line.split(separator: ":")
-            guard parts.count == 2,
-                  let address = UInt16(parts[0].trimmingCharacters(in: .whitespaces),
-                                       radix: 16) else { continue }
-            let bytes = parts[1].split(separator: " ").compactMap {
-                UInt8($0, radix: 16)
-            }
-            guard !bytes.isEmpty else { continue }
-            chunks.append((address, bytes))
-        }
-        return chunks
-    }
-
     /// Most recent keypress (from either keyboard) — the on-screen
     /// caps flash to match.
     private(set) var keyFlash: (ascii: UInt8, frame: Int)?
@@ -877,9 +944,15 @@ final class MachineController {
         panel.allowedContentTypes = [.plainText]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try? text.write(to: url, atomically: true, encoding: .utf8)
-        let wavURL = url.deletingPathExtension().deletingPathExtension()
-            .appendingPathExtension("wav")
-        try? sound.writeTapeWAV(bytes: bytes, to: wavURL)
+        // Only a single contiguous range round-trips faithfully as one .wav
+        // (a flat stream has no addresses; no real tape concatenated two
+        // non-contiguous ranges). Multi-range tapes keep just the .woz.txt,
+        // which preserves each range and warm-restarts BASIC correctly.
+        if ranges.count == 1 {
+            let wavURL = url.deletingPathExtension().deletingPathExtension()
+                .appendingPathExtension("wav")
+            try? sound.writeTapeWAV(bytes: bytes, to: wavURL)
+        }
         sound.tapeLoad() // a little record-head chirp for the moment
         insertedTapeName = name.uppercased()
     }
@@ -890,14 +963,56 @@ final class MachineController {
         var machine: Apple1.Snapshot
         var placed: [String]
         var connected: [String]
+        var cpuVariant: String? // optional: snapshots predating the 6800 swap
     }
 
-    func saveSnapshot() {
+    /// Encode the whole bench — machine + sockets + peripherals + CPU
+    /// variant — as a snapshot. Split out from `saveSnapshot` so the
+    /// round-trip is testable without a save panel.
+    func encodeBenchState() -> Data? {
         let state = BenchState(
             machine: machine.takeSnapshot(),
             placed: placed.map(\.rawValue),
-            connected: connected.map(\.rawValue))
-        guard let data = try? JSONEncoder().encode(state) else { return }
+            connected: connected.map(\.rawValue),
+            cpuVariant: cpuVariant.rawValue)
+        return try? JSONEncoder().encode(state)
+    }
+
+    /// Apply a previously-encoded bench. Returns false WITHOUT touching the
+    /// live machine if the data is corrupt or the wrong shape. Split out
+    /// from `restoreSnapshot` so it's testable without an open panel.
+    @discardableResult
+    func applyBenchState(_ data: Data) -> Bool {
+        guard let state = try? JSONDecoder().decode(BenchState.self, from: data),
+              state.machine.mem.count == 0x10000,
+              state.machine.screen.count == Terminal.columns * Terminal.rows
+        else { return false } // reject a corrupt/foreign file before touching live state
+        placed = Set(state.placed.compactMap(ChipGroup.init(rawValue:)))
+        connected = Set(state.connected.compactMap(Peripheral.init(rawValue:)))
+        // Set the variant BEFORE restoring: the didSet resets/clears, then
+        // machine.restore overwrites with the saved mem/regs/screen.
+        cpuVariant = CPUVariant(rawValue: state.cpuVariant ?? "") ?? .mos6502
+        syncSockets()
+        // Re-derive ACI from `connected` the way syncSockets does for the
+        // other sockets — otherwise the card's bus behavior desyncs.
+        if connected.contains(.aciCard), let rom = try? ROM.wozaci() {
+            machine.installACI(rom: rom)
+        } else {
+            machine.aciInstalled = false
+        }
+        machine.restore(state.machine)
+        // Anchor the warm-up clocks so a restored-powered tube actually
+        // warms (instead of pinning cold and forcing a redraw every frame).
+        if connected.contains(.power) {
+            poweredFrame = frame
+            if monitorOn { monitorOnFrame = frame }
+        }
+        displayRevision += 1
+        return true
+    }
+
+    func saveSnapshot() {
+        guard let data = encodeBenchState() else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Apple-1 Session.a1state"
         panel.allowedContentTypes = [.json]
@@ -908,19 +1023,15 @@ final class MachineController {
     func restoreSnapshot() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url,
-              let data = try? Data(contentsOf: url),
-              let state = try? JSONDecoder().decode(BenchState.self, from: data)
-        else { return }
-        placed = Set(state.placed.compactMap(ChipGroup.init(rawValue:)))
-        connected = Set(state.connected.compactMap(Peripheral.init(rawValue:)))
-        syncSockets()
-        machine.restore(state.machine)
-        displayRevision += 1
+              let data = try? Data(contentsOf: url) else { return }
+        applyBenchState(data)
     }
 
     /// ⌘V: type the clipboard into the machine, 1976-style.
     func paste() {
+        ensure6502()
         guard powered, connected.contains(.keyboard),
               let text = NSPasteboard.general.string(forType: .string) else { return }
         autoType(String(text.prefix(2000)))
@@ -976,8 +1087,7 @@ final class MachineController {
 
     func reset() {
         guard powered else { return }
-        silentLowFrames = 0
-        if looksCrashed { looksCrashed = false }
+        clearCrashState()
         machine.reset()
     }
 
@@ -986,6 +1096,7 @@ final class MachineController {
     /// Resets first so it works from any state, including a crashed CPU
     /// or a runaway program.
     func loadBASIC() {
+        ensure6502()
         guard powered, connected.contains(.aciCard), placed.contains(.ramX),
               let basic = try? ROM.integerBASIC() else { return }
         reset()

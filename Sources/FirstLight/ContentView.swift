@@ -378,32 +378,6 @@ struct CollapseButton: View {
     }
 }
 
-/// Thin vertical strip that restores a collapsed panel.
-struct SideTab: View {
-    let label: String
-    var symbol = "chevron.right.2"
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: symbol)
-                ForEach(Array(label.enumerated()), id: \.offset) { _, letter in
-                    Text(String(letter))
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                }
-            }
-            .frame(width: 26)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.white.opacity(0.5))
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06)))
-        .help("Show the \(label.lowercased())")
-    }
-}
-
 /// Icon-only shelf: still draggable, one click to expand.
 /// Small left-pointing arrow for the removal callout.
 struct Triangle: Shape {
@@ -539,8 +513,7 @@ struct CompactShelf: View {
     }
 }
 
-/// First-launch invitation to the guided tour.
-/// Icon-only sibling of PillButton.
+/// A small icon-only round button (board / deck / keyboard chrome).
 struct IconPill: View {
     let symbol: String
     var help: String = ""
@@ -556,25 +529,6 @@ struct IconPill: View {
         }
         .buttonStyle(.plain)
         .help(help)
-    }
-}
-
-/// A capsule control like the keyboard's minimized pill.
-struct PillButton: View {
-    let label: String
-    let symbol: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(label, systemImage: symbol)
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.45))
-                .padding(.vertical, 4)
-                .padding(.horizontal, 10)
-                .background(Capsule().fill(Color(white: 0.14)))
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -1056,34 +1010,6 @@ struct ChipShelfItem: View {
     }
 }
 
-/// The monitor sitting next to the board. Dark glass until a monitor is
-/// connected AND the machine has power.
-struct CRTView: View {
-    @Bindable var controller: MachineController
-
-    var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color(red: 0.22, green: 0.20, blue: 0.18)) // bezel
-                TubeView(controller: controller)
-                    .padding(10)
-            }
-            .aspectRatio(4.0 / 3.4, contentMode: .fit)
-            MonitorControls(controller: controller, compact: true)
-        }
-    }
-
-    private func screenOff(message: String) -> some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(Color(red: 0.04, green: 0.05, blue: 0.04))
-            .overlay(Text(message)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.25)))
-            .padding(10)
-    }
-}
-
 /// Bottom strip: explains whatever the mouse is over, the next assembly
 /// step — or, once the machine is built, rotating Apple-1 lore.
 struct InfoBar: View {
@@ -1107,7 +1033,7 @@ struct InfoBar: View {
         ("1980", "Four years after this board, Apple's IPO minted more instant millionaires than any company before it."),
         ("1984", "Eight years from garage board to Macintosh — same idea both times: a computer for a person, not an institution."),
         ("2014", "A working Apple-1 sold at Bonhams for $905,000. The Henry Ford Museum was the buyer."),
-        ("2022", "Steve Jobs' handwritten draft of an Apple-1 ad sold at auction for $175,759 — the ad, not the computer."),
+        ("2023", "Steve Jobs' handwritten draft of an Apple-1 ad sold at auction for $175,759 — the ad, not the computer."),
         ("2026", "Apple turned 50 on April 1, 2026. About 200 of these boards started all of it."),
     ]
 
@@ -1171,13 +1097,6 @@ struct InfoBar: View {
             return ("Reseated and reset — but RAM survived. If BASIC was "
                 + "loaded, type E2B3R to re-enter it with your program "
                 + "intact. (Real Apple-1s worked exactly this way.)", false)
-        }
-        if controller.powered, controller.cpuVariant == .m6800 {
-            return ("The 6800 configuration: clock parts installed, "
-                + "bridges broken, terminal blinking — but the PROMs "
-                + "hold 6502 code and no 6800 monitor was ever written. "
-                + "It waits forever for software that never existed. "
-                + "(Machine ▸ Processor swaps back.)", false)
         }
         if controller.typingHintActive {
             if !controller.connected.contains(.keyboard) {
@@ -1259,7 +1178,7 @@ struct MonitorView: View {
                         .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(Color(white: 0.30), lineWidth: 1.5)
-                    TerminalOrGlass(controller: controller)
+                    TubeView(controller: controller)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .padding(14)
                 }
@@ -1309,23 +1228,6 @@ struct MonitorView: View {
     }
 }
 
-/// The tube, honoring machine state like the in-app panel.
-private struct TerminalOrGlass: View {
-    let controller: MachineController
-
-    var body: some View {
-        TubeView(controller: controller)
-    }
-
-    private func offGlass(_ message: String) -> some View {
-        ZStack {
-            Color(red: 0.04, green: 0.05, blue: 0.04)
-            Text(message)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.25))
-        }
-    }
-}
 
 /// The monitor's front-panel controls — knobs plus the power switch.
 /// Shared by the attached CRT panel (compact) and the Monitor window.

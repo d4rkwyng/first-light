@@ -13,7 +13,6 @@ public enum TapeEncoding {
                               speed: Double = 1.0,
                               byteGapUs: Double = 0) -> [Double] {
         var out: [Double] = []
-        defer { }
         let leaderCycles = Int(leaderSeconds * 1_000_000 / 1020)
         for _ in 0..<leaderCycles {
             out.append(565)

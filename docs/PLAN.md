@@ -22,7 +22,7 @@ Nothing like this shipped for the 50th anniversary (April 1, 2026). CHM's
   Global CPU state → exactly one machine instance at a time.
 - `Apple1Core` — pure model, no UI: memory map, PIA 6820 (with DDR/port
   select on CR bit 2), Terminal (40×24, 6-bit glyph truncation, 60 cps
-  governor at 17,050 cycles/frame), bundled ROMs. Portable to iPad/visionOS.
+  governor at 17,045 cycles/frame), bundled ROMs. Portable to iPad/visionOS.
 - `FirstLight` — SwiftUI app. 60 Hz timer drives the machine in real time.
 
 ## Milestones
@@ -265,8 +265,11 @@ T6. **Machine state snapshots.** Save/restore the whole machine (RAM,
 
 T7. **Metal CRT shader.** DONE (Xcode installed): barrel curvature,
     raster-locked scanlines, bloom, vignette via layerEffect; Canvas
-    fallback kept for CLT-only builds. Remaining someday: phosphor
-    persistence (needs frame history), NTSC artifact simulation.
+    fallback kept for CLT-only builds. **Phosphor persistence DONE
+    (2026-06-16)** — not in the (stateless) shader but as a per-cell
+    glow model in the controller: cleared/scrolled cells keep their
+    glyph and fade over ~¼s (CRT-effects mode only). Remaining someday:
+    NTSC artifact simulation; a punchier "ghost on any change" smear.
 
 T8. **Known-bug sweep.** Keyboard auto-repeat behavior research (real
     Datanetics had none), CTRL key function, fullscreen edge cases,
@@ -282,3 +285,29 @@ T10. **Release readiness.** Fact-check every in-app date/claim, credits
 Voted order rationale: T1+T2 first (authenticity flagship + the safety
 net), then instructions (T3/T4), speed (T5/T6), visuals (T7), polish
 (T8-T10).
+
+## Beyond the plan (2026-06)
+
+- **6800 processor-swap "what-if" (DONE).** Machine ▸ Processor swaps the
+  socketed CPU. The board provision is real: schematic note 7's dotted box and
+  the two "6502" solder bridges (verified against the Operation Manual). Choosing
+  the 6800 populates the dotted-box clock parts and the (6800 ONLY) 7404, darkens
+  the white 6502 to an MC6800, and the machine goes authentically silent — clock
+  runs, terminal blinks, but the PROMs hold 6502 code and no 6800 monitor was ever
+  written. The chip-select jumper wires above the 74154 are CPU-agnostic (they
+  pick the memory map, not the brain). Implemented as a what-if toggle, hover
+  lore, and a rotating fact.
+
+## Quality pass (2026-06-16, Opus, post-Fable-5)
+
+Deep multi-agent review (47 verified findings). Fixed the bug clusters: snapshot
+now persists cpuVariant + reconciles the ACI card + warms the restored CRT +
+rejects corrupt `.a1state` files; the 6800 what-if can no longer strand a load or
+swallow keystrokes (`ensure6502()` at every run/load entry + a shared
+`cancelInFlightLoad`/`clearCrashState` helper); the last actor-isolation build
+warning is gone. Plus a cleanup sweep (dead views/methods, a duplicate info-bar
+block, historical fact corrections). Deferred backlog: FirstLight/6800 test
+coverage, `CRT.metallib` build regeneration, the `Apple1.current` global, the
+unbounded transcript, accessibility. Still open: the Apple-ROM legal gate before
+any public release (bundled Woz Monitor + Integer BASIC are Apple copyrights;
+safest path is ship-without-ROMs or ship-source-and-assemble + a provenance NOTICE).
