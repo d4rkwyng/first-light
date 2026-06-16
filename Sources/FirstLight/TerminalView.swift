@@ -36,13 +36,23 @@ struct TerminalView: View {
                     * (hold > 0 ? 1 : -1)
             }
 
+            let ghosts = controller.crtEffects // phosphor trails only in showcase mode
             context.withCGContext { cg in
                 cg.interpolationQuality = .none
                 for row in 0..<Terminal.rows {
                     for col in 0..<Terminal.columns {
-                        var ascii = terminal.screen[row * Terminal.columns + col]
+                        let idx = row * Terminal.columns + col
+                        var ascii = terminal.screen[idx]
+                        var alpha: CGFloat = 1
                         if row == terminal.cursorY && col == terminal.cursorX {
                             ascii = controller.cursorVisible ? 0x40 : 0x20 // @
+                        } else if ascii == 0x20 && ghosts {
+                            // a fading ghost of the character that was here
+                            let g = controller.phosphorGlow[idx]
+                            if g > 0 {
+                                ascii = controller.phosphorGlyph[idx]
+                                alpha = CGFloat(g)
+                            }
                         }
                         guard ascii != 0x20, let glyph = font.image(for: ascii)
                         else { continue }
@@ -55,6 +65,7 @@ struct TerminalView: View {
                             width: cell.width * 5 / 7,
                             height: cell.height * 0.88)
                         cg.saveGState()
+                        cg.setAlpha(alpha)
                         // CGContext draws images bottom-up; flip per glyph
                         cg.translateBy(x: rect.minX, y: rect.maxY)
                         cg.scaleBy(x: 1, y: -1)

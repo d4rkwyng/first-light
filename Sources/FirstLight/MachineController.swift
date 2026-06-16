@@ -281,6 +281,32 @@ final class MachineController {
         }
     }
 
+    /// Advance the phosphor one frame: lit cells strike to full and remember
+    /// their glyph; blanked cells decay so the glyph ghosts out. Sets
+    /// `phosphorActive` while any cell is mid-fade. Off (and cleared) outside
+    /// CRT-effects mode or when the tube is dark.
+    private func updatePhosphor() {
+        guard crtEffects, powered, placed.contains(.video) else {
+            if phosphorActive {
+                for i in phosphorGlow.indices { phosphorGlow[i] = 0 }
+                phosphorActive = false
+            }
+            return
+        }
+        let screen = machine.terminal.screen
+        var fading = false
+        for i in screen.indices {
+            if screen[i] != 0x20 {            // lit: struck to full
+                phosphorGlyph[i] = screen[i]
+                phosphorGlow[i] = 1
+            } else if phosphorGlow[i] > 0 {   // blanked: decay the ghost
+                phosphorGlow[i] *= 0.82
+                if phosphorGlow[i] < 0.05 { phosphorGlow[i] = 0 } else { fading = true }
+            }
+        }
+        phosphorActive = fading
+    }
+
     /// All board lighting theater — power-net surge/pulse and the
     /// chip activity glow — behind one switch.
     var lightingEffects = true
@@ -373,6 +399,17 @@ final class MachineController {
     private(set) var displayRevision = 0
     private(set) var cursorVisible = true
     private var lastTerminalRevision = -1
+
+    /// T7: per-cell phosphor persistence. When a character is cleared or
+    /// scrolled away, its cell keeps glowing and fades over ~¼ second, so the
+    /// old text lingers as a ghost — the way a P1 green tube actually decayed.
+    /// `@ObservationIgnored`: the canvas redraws via `displayRevision`, not by
+    /// observing these hot per-frame arrays. Only live in CRT-effects mode.
+    @ObservationIgnored private(set) var phosphorGlow =
+        [Double](repeating: 0, count: Terminal.columns * Terminal.rows)
+    @ObservationIgnored private(set) var phosphorGlyph =
+        [UInt8](repeating: 0x20, count: Terminal.columns * Terminal.rows)
+    @ObservationIgnored private var phosphorActive = false
 
     // Tutorial state
     private(set) var tutorialStep: Int?
@@ -479,6 +516,11 @@ final class MachineController {
         if abs(vHold) > 0.08 || (powered && crtWarmth < 1) {
             displayRevision += 1
         }
+        // Phosphor ghosts: keep redrawing while anything is fading (and on the
+        // frame the last ghost clears, so it doesn't freeze mid-fade).
+        let wasFading = phosphorActive
+        updatePhosphor()
+        if phosphorActive || wasFading { displayRevision += 1 }
         if frame % 3 == 0 { pulseFrame = frame }
         updateWarmth()
         let blink = powered && placed.contains(.video) && (frame / 15) % 2 == 0

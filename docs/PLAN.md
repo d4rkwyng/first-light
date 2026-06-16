@@ -265,8 +265,11 @@ T6. **Machine state snapshots.** Save/restore the whole machine (RAM,
 
 T7. **Metal CRT shader.** DONE (Xcode installed): barrel curvature,
     raster-locked scanlines, bloom, vignette via layerEffect; Canvas
-    fallback kept for CLT-only builds. Remaining someday: phosphor
-    persistence (needs frame history), NTSC artifact simulation.
+    fallback kept for CLT-only builds. **Phosphor persistence DONE
+    (2026-06-16)** — not in the (stateless) shader but as a per-cell
+    glow model in the controller: cleared/scrolled cells keep their
+    glyph and fade over ~¼s (CRT-effects mode only). Remaining someday:
+    NTSC artifact simulation; a punchier "ghost on any change" smear.
 
 T8. **Known-bug sweep.** Keyboard auto-repeat behavior research (real
     Datanetics had none), CTRL key function, fullscreen edge cases,
