@@ -911,30 +911,27 @@ final class MachineController {
         var cpuVariant: String? // optional: snapshots predating the 6800 swap
     }
 
-    func saveSnapshot() {
+    /// Encode the whole bench — machine + sockets + peripherals + CPU
+    /// variant — as a snapshot. Split out from `saveSnapshot` so the
+    /// round-trip is testable without a save panel.
+    func encodeBenchState() -> Data? {
         let state = BenchState(
             machine: machine.takeSnapshot(),
             placed: placed.map(\.rawValue),
             connected: connected.map(\.rawValue),
             cpuVariant: cpuVariant.rawValue)
-        guard let data = try? JSONEncoder().encode(state) else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Apple-1 Session.a1state"
-        panel.allowedContentTypes = [.json]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        try? data.write(to: url)
+        return try? JSONEncoder().encode(state)
     }
 
-    func restoreSnapshot() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [.json]
-        guard panel.runModal() == .OK, let url = panel.url,
-              let data = try? Data(contentsOf: url),
-              let state = try? JSONDecoder().decode(BenchState.self, from: data),
+    /// Apply a previously-encoded bench. Returns false WITHOUT touching the
+    /// live machine if the data is corrupt or the wrong shape. Split out
+    /// from `restoreSnapshot` so it's testable without an open panel.
+    @discardableResult
+    func applyBenchState(_ data: Data) -> Bool {
+        guard let state = try? JSONDecoder().decode(BenchState.self, from: data),
               state.machine.mem.count == 0x10000,
               state.machine.screen.count == Terminal.columns * Terminal.rows
-        else { return } // reject a corrupt/foreign file before touching live state
+        else { return false } // reject a corrupt/foreign file before touching live state
         placed = Set(state.placed.compactMap(ChipGroup.init(rawValue:)))
         connected = Set(state.connected.compactMap(Peripheral.init(rawValue:)))
         // Set the variant BEFORE restoring: the didSet resets/clears, then
@@ -956,6 +953,25 @@ final class MachineController {
             if monitorOn { monitorOnFrame = frame }
         }
         displayRevision += 1
+        return true
+    }
+
+    func saveSnapshot() {
+        guard let data = encodeBenchState() else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Apple-1 Session.a1state"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? data.write(to: url)
+    }
+
+    func restoreSnapshot() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url) else { return }
+        applyBenchState(data)
     }
 
     /// ⌘V: type the clipboard into the machine, 1976-style.
