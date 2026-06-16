@@ -39,23 +39,29 @@ struct TerminalView: View {
             let ghosts = controller.crtEffects // phosphor trails only in showcase mode
             context.withCGContext { cg in
                 cg.interpolationQuality = .none
+                @MainActor func draw(_ ascii: UInt8, _ alpha: CGFloat, _ rect: CGRect) {
+                    guard let glyph = font.image(for: ascii) else { return }
+                    cg.saveGState()
+                    cg.setAlpha(alpha)
+                    // CGContext draws images bottom-up; flip per glyph
+                    cg.translateBy(x: rect.minX, y: rect.maxY)
+                    cg.scaleBy(x: 1, y: -1)
+                    cg.draw(glyph, in: CGRect(origin: .zero, size: rect.size))
+                    cg.restoreGState()
+                }
                 for row in 0..<Terminal.rows {
                     for col in 0..<Terminal.columns {
                         let idx = row * Terminal.columns + col
-                        var ascii = terminal.screen[idx]
-                        var alpha: CGFloat = 1
-                        if row == terminal.cursorY && col == terminal.cursorX {
-                            ascii = controller.cursorVisible ? 0x40 : 0x20 // @
-                        } else if ascii == 0x20 && ghosts {
-                            // a fading ghost of the character that was here
-                            let g = controller.phosphorGlow[idx]
-                            if g > 0 {
-                                ascii = controller.phosphorGlyph[idx]
-                                alpha = CGFloat(g)
-                            }
-                        }
-                        guard ascii != 0x20, let glyph = font.image(for: ascii)
-                        else { continue }
+                        let isCursor = row == terminal.cursorY && col == terminal.cursorX
+                        // the live glyph (the cursor overrides its own cell)
+                        let live: UInt8 = isCursor
+                            ? (controller.cursorVisible ? 0x40 : 0x20) // @
+                            : terminal.screen[idx]
+                        // the fading ghost beneath it (never under the cursor)
+                        let ghostGlow = (ghosts && !isCursor) ? controller.phosphorGlow[idx] : 0
+                        let liveLit = live != 0x20
+                        guard liveLit || ghostGlow > 0 else { continue }
+
                         // 5 dots + 2 blank columns per character cell
                         let rawY = CGFloat(row) * cell.height + cell.height * 0.06 + shift
                         let wrappedY = rawY.truncatingRemainder(dividingBy: size.height)
@@ -64,13 +70,9 @@ struct TerminalView: View {
                             y: wrappedY < 0 ? wrappedY + size.height : wrappedY,
                             width: cell.width * 5 / 7,
                             height: cell.height * 0.88)
-                        cg.saveGState()
-                        cg.setAlpha(alpha)
-                        // CGContext draws images bottom-up; flip per glyph
-                        cg.translateBy(x: rect.minX, y: rect.maxY)
-                        cg.scaleBy(x: 1, y: -1)
-                        cg.draw(glyph, in: CGRect(origin: .zero, size: rect.size))
-                        cg.restoreGState()
+
+                        if ghostGlow > 0 { draw(controller.phosphorGlyph[idx], CGFloat(ghostGlow), rect) }
+                        if liveLit { draw(live, 1, rect) }
                     }
                 }
             }

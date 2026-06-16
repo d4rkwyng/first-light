@@ -281,26 +281,36 @@ final class MachineController {
         }
     }
 
-    /// Advance the phosphor one frame: lit cells strike to full and remember
-    /// their glyph; blanked cells decay so the glyph ghosts out. Sets
-    /// `phosphorActive` while any cell is mid-fade. Off (and cleared) outside
-    /// CRT-effects mode or when the tube is dark.
+    /// Advance the phosphor one frame. Whenever a cell's character CHANGES —
+    /// cleared, overwritten, or scrolled — its outgoing glyph is shed as a
+    /// fresh ghost that then decays, so moving/scrolling text leaves a brief
+    /// trail (not just a clear-screen fade). Sets `phosphorActive` while any
+    /// cell is mid-fade. Off (and cleared) outside CRT-effects mode / dark tube.
     private func updatePhosphor() {
         guard crtEffects, powered, placed.contains(.video) else {
             if phosphorActive {
                 for i in phosphorGlow.indices { phosphorGlow[i] = 0 }
                 phosphorActive = false
             }
+            phosphorWasOn = false
             return
         }
         let screen = machine.terminal.screen
+        if !phosphorWasOn { // just enabled: adopt the screen, don't ghost the diff
+            for i in screen.indices { phosphorPrev[i] = screen[i] }
+            phosphorWasOn = true
+        }
         var fading = false
         for i in screen.indices {
-            if screen[i] != 0x20 {            // lit: struck to full
-                phosphorGlyph[i] = screen[i]
-                phosphorGlow[i] = 1
-            } else if phosphorGlow[i] > 0 {   // blanked: decay the ghost
-                phosphorGlow[i] *= 0.82
+            if screen[i] != phosphorPrev[i] {       // content changed here
+                if phosphorPrev[i] != 0x20 {        // shed the departing glyph
+                    phosphorGlyph[i] = phosphorPrev[i]
+                    phosphorGlow[i] = 1
+                }
+                phosphorPrev[i] = screen[i]
+            }
+            if phosphorGlow[i] > 0 {
+                phosphorGlow[i] *= 0.82 // ~¼-second fade — authentic P1 persistence
                 if phosphorGlow[i] < 0.05 { phosphorGlow[i] = 0 } else { fading = true }
             }
         }
@@ -409,7 +419,10 @@ final class MachineController {
         [Double](repeating: 0, count: Terminal.columns * Terminal.rows)
     @ObservationIgnored private(set) var phosphorGlyph =
         [UInt8](repeating: 0x20, count: Terminal.columns * Terminal.rows)
+    @ObservationIgnored private var phosphorPrev =
+        [UInt8](repeating: 0x20, count: Terminal.columns * Terminal.rows)
     @ObservationIgnored private var phosphorActive = false
+    @ObservationIgnored private var phosphorWasOn = false
 
     // Tutorial state
     private(set) var tutorialStep: Int?
