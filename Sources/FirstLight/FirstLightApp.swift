@@ -1,7 +1,15 @@
 import SwiftUI
 
+/// The bench is a single-window app: closing the last window quits, the way a
+/// Mac user expects the red button to behave here (no lingering dockless process).
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
+}
+
 @main
 struct FirstLightApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         if CommandLine.arguments.contains("--verify-tapes") {
             TapeVerifier.run()

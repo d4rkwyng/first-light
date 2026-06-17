@@ -39,7 +39,10 @@ cp -R "$BUILD_DIR/first-light_Apple1Core.bundle" "$APP/Contents/Resources/"
 cp -R "$BUILD_DIR/first-light_FirstLight.bundle" "$APP/Contents/Resources/"
 cp Sources/FirstLight/Resources/AppIcon.icns "$APP/Contents/Resources/"
 
-VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+# NB: `|| true` is load-bearing — with no git tags, `git describe` exits 128,
+# and pipefail+set -e would otherwise abort the whole script here, leaving the
+# bundle with no Info.plist (no icon, no bundle id, unsigned).
+VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)
 VERSION=${VERSION:-0.1.0}
 BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 
