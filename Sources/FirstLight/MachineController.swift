@@ -140,9 +140,11 @@ final class MachineController {
             || aciInspectRequested
     }
 
-    /// Authentic load speed: real ACI rate (~1500 bps + leader) instead
-    /// of the ~3-second showcase load. Toggle in the Cassettes menu.
-    var authenticLoads = false
+    /// Authentic load speed: the real ACI bus load — type C100R + the range,
+    /// the bit-true FSK plays in real time (~30 s for BASIC) while the bytes
+    /// arrive off the bus, then run. The DEFAULT, because it's how people
+    /// actually experienced it. Turn it off (Cassettes menu) for a quick load.
+    var authenticLoads = true
 
     /// Cassette loading theater: name of the tape in the deck, or nil.
     private(set) var nowLoading: String?
@@ -1101,6 +1103,6 @@ final class MachineController {
               let basic = try? ROM.integerBASIC() else { return }
         reset()
         machine.load(basic, at: 0xE000)
-        machine.type("E000R\n")
+        autoType("E000R\n") // typed at human speed, not dumped instantly
     }
 }

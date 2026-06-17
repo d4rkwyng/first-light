@@ -355,7 +355,7 @@ struct ContentView: View {
                 .foregroundStyle(.white.opacity(0.4))
                 .help("Hide this panel")
             }
-            .frame(height: 58)
+            .frame(minHeight: 58) // grows to fit long hover text (don't clip it)
         }
     }
 }
