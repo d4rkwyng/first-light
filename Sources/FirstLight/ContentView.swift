@@ -217,7 +217,7 @@ struct ContentView: View {
             if controller.fullScreenDisplay {
                 ZStack(alignment: .bottom) {
                     Color.black.ignoresSafeArea()
-                    TerminalView(controller: controller)
+                    TubeView(controller: controller)
                         .padding(36)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     Text("double-click, ESC ESC, or ⌘F to return to the bench")

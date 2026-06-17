@@ -218,6 +218,7 @@ final class MachineController {
         loadStartFrame = frame
         tapeCounter = 0
         insertedTapeName = name
+        ranLoadedProgram = load < 0xE000 // a binary runs low-mem; BASIC at $E000 doesn't
         // 6 s leader: the real wozaci ROM writes a ~3.4 s sync header before it
         // listens, so a shorter leader never locks on (the load silently fails
         // after ~30 s). MUST match the audio's 6 s — it's the same signal.
@@ -442,6 +443,11 @@ final class MachineController {
     private var videoChars = 0
     private var autoTypeQueue: [UInt8] = []
     @ObservationIgnored private var silentLowFrames = 0
+    /// True while a program WE loaded/ran is executing — it legitimately lives
+    /// below $E000 and may sit in a keyboard-poll loop (Microchess, Lunar
+    /// Lander…) or grind on a long compute (Mandelbrot). Suppresses the crash
+    /// heuristic, which is only meant for the user manually jumping into garbage.
+    @ObservationIgnored private var ranLoadedProgram = false
 
     /// True when the CPU has been executing low memory with no output for
     /// a couple of seconds — the classic "ran garbage, hit BRK, looping
@@ -504,7 +510,7 @@ final class MachineController {
             update(.video, Double(videoChars))
             // Crash heuristic: ROM/BASIC live at $E000+, so a quiet CPU
             // below that is running garbage, not waiting for input.
-            if machine.pc < 0xE000 && videoChars == 0 {
+            if !ranLoadedProgram && machine.pc < 0xE000 && videoChars == 0 {
                 silentLowFrames += 1
                 if silentLowFrames == 121 { looksCrashed = true }
             } else {
@@ -661,6 +667,7 @@ final class MachineController {
             poweredFrame = nil
             cancelInFlightLoad()
             clearCrashState()
+            ranLoadedProgram = false
         }
     }
 
@@ -745,6 +752,7 @@ final class MachineController {
             reset()
         }
         autoType(program.text)
+        ranLoadedProgram = !program.needsBASIC // an ML demo runs low-mem, not a crash
     }
 
     /// Insert a cassette: sets the machine up, loads the tape the way
@@ -820,6 +828,7 @@ final class MachineController {
             reset()
             machine.load(bytes, at: load)
             autoType("\(run)\n")
+            ranLoadedProgram = true // a loaded ML program, not a crash
         }
     }
 
@@ -1098,6 +1107,7 @@ final class MachineController {
     func reset() {
         guard powered else { return }
         clearCrashState()
+        ranLoadedProgram = false // back at the bare monitor; re-arm crash detection
         machine.reset()
     }
 

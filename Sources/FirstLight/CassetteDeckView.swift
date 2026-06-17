@@ -77,7 +77,7 @@ struct TapeDeckBar: View {
             HStack(spacing: 2.5) {
                 key("REW", enabled: !loading) { controller.rewindTape() }
                 key("PLAY", pressed: loading,
-                    enabled: controller.insertedTapeName != nil && !loading) {
+                    enabled: controller.powered && controller.insertedTapeName != nil && !loading) {
                     controller.playInsertedTape()
                 }
                 key("F.F", enabled: !loading) { controller.fastForwardTape() }
