@@ -1,9 +1,10 @@
 import AVFoundation
 import Apple1Core
 
-/// All of the bench's sounds, synthesized — no audio assets. A low mains
-/// hum while powered, key clicks, chip seat/eject, the power-on thunk,
-/// and the ACI's two-tone FSK warble during cassette loads.
+/// All of the bench's sounds, synthesized — no audio assets. A transformer-true
+/// mains hum while powered (120 Hz ripple + harmonics + buzz), key clicks, chip
+/// seat/eject, the power-on thunk with transformer inrush, and the ACI's
+/// two-tone FSK warble during cassette loads.
 @MainActor
 final class SoundEngine {
     private let engine = AVAudioEngine()
@@ -53,9 +54,14 @@ final class SoundEngine {
             (sin(t * 320 * 2 * .pi) * 0.5 + Float.random(in: -1...1) * 0.2)
                 * exp(-t * 70)
         }
-        buffers["thunk"] = make(duration: 0.35) { t, _ in
-            (sin(t * 50 * 2 * .pi) * 0.8 + sin(t * 95 * 2 * .pi) * 0.3)
+        // Power-on: the chassis/switch thud plus the transformer's inrush
+        // buzz as it energizes and the filter caps charge (120 Hz + harmonics).
+        buffers["thunk"] = make(duration: 0.4) { t, _ in
+            let thud = (sin(t * 50 * 2 * .pi) * 0.8 + sin(t * 95 * 2 * .pi) * 0.3)
                 * exp(-t * 12)
+            let inrush = (sin(t * 120 * 2 * .pi) * 0.5 + sin(t * 240 * 2 * .pi) * 0.2
+                + Float.random(in: -1...1) * 0.15) * exp(-t * 9)
+            return thud + inrush * min(1, Float(t) * 80) // brief attack, no click
         }
         // ~2.4s of ACI-style FSK: pseudo-random bits at the real tones
         buffers["fsk"] = make(duration: 2.4) { t, _ in
@@ -91,9 +97,19 @@ final class SoundEngine {
                 * min(1, Float(t) * 30) * min(1, Float(0.5 - t) * 8)
                 + sin(t * 80 * 2 * .pi) * 0.06
         }
+        // A 1976 linear supply, not a synth tone: 120 Hz full-wave ripple
+        // dominates, with the transformer's 60 Hz magnetostriction, a stack of
+        // buzzy harmonics, a little broadband transformer hash, and a slow load
+        // wobble. Every component freq divides 1.0 s, so the loop is seamless.
         buffers["humLoop"] = make(duration: 1.0) { t, _ in
-            sin(t * 60 * 2 * .pi) * 0.55 + sin(t * 120 * 2 * .pi) * 0.30
-                + sin(t * 180 * 2 * .pi) * 0.10
+            let ripple = sin(t * 120 * 2 * .pi) * 0.50   // rectifier ripple — dominant
+                + sin(t * 60  * 2 * .pi) * 0.20          // transformer fundamental
+                + sin(t * 240 * 2 * .pi) * 0.15
+                + sin(t * 360 * 2 * .pi) * 0.08
+                + sin(t * 180 * 2 * .pi) * 0.05
+            let hash = Float.random(in: -1...1) * 0.04   // transformer buzz
+            let wobble = 0.92 + 0.08 * sin(t * 2 * .pi)  // ~1 Hz load variation
+            return (ripple + hash) * wobble
         }
         try? engine.start()
     }
