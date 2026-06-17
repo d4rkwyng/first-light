@@ -150,4 +150,25 @@ func runUntil(_ machine: Apple1, contains needle: String,
         t.put(0x41) // would have been an out-of-bounds write before the clamp
         #expect(t.line(0).hasSuffix("A"))
     }
+
+    @Test func authenticACILoadBootsBASICAtProductionLeader() throws {
+        // The app's authentic load arms the tape at a 6 s leader; a shorter one
+        // (an earlier 2.5 s) never locks the ACI ROM and the load silently fails
+        // after ~30 s. Lock the working value in via the real ROM read.
+        let m = try Apple1()
+        m.displayCyclesPerChar = 0
+        m.installACI(rom: try ROM.wozaci())
+        m.run(cycles: 500_000)
+        m.armTape(bytes: try ROM.integerBASIC(), leaderSeconds: 6.0)
+        m.type("C100R\n")
+        m.run(cycles: 1_000_000)
+        m.type("E000.EFFFR\n")
+        m.run(cycles: 60_000_000) // 6 s leader + ~31 s data + the ROM's warm-up
+        #expect(m.peek(0xE000) == 0x4C, "BASIC cold-start JMP should land at $E000")
+        let before = m.terminal.transcript
+        m.type("E000R\n")
+        m.run(cycles: 4_000_000)
+        #expect(String(m.terminal.transcript.dropFirst(before.count)).contains(">"),
+                "BASIC prompt should appear after the authentic tape read")
+    }
 }

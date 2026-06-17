@@ -213,11 +213,15 @@ final class MachineController {
         placeAll()
         connect(.power); connect(.display); connect(.keyboard)
         connect(.aciCard)
+        reset() // a clean wozmon prompt before C100R (place() no longer resets)
         nowLoading = name
         loadStartFrame = frame
         tapeCounter = 0
         insertedTapeName = name
-        machine.armTape(bytes: bytes, leaderSeconds: 2.5)
+        // 6 s leader: the real wozaci ROM writes a ~3.4 s sync header before it
+        // listens, so a shorter leader never locks on (the load silently fails
+        // after ~30 s). MUST match the audio's 6 s — it's the same signal.
+        machine.armTape(bytes: bytes, leaderSeconds: 6.0)
         let duration = sound.tapePlay(bytes: bytes, authentic: true)
         loadFinishFrame = frame + Int(duration * 60)
         pendingLoad = nil
@@ -690,7 +694,7 @@ final class MachineController {
     var reseatHintActive: Bool { pulseFrame < reseatHintUntil }
 
     func place(_ group: ChipGroup) {
-        placed.insert(group)
+        guard placed.insert(group).inserted else { return } // already seated → no-op
         sound.chipSeat()
         syncSockets()
         // Hot-seating the brain or its ROM restarts execution cleanly
@@ -957,6 +961,10 @@ final class MachineController {
         }
         sound.tapeLoad() // a little record-head chirp for the moment
         insertedTapeName = name.uppercased()
+        // PLAY replays what you just recorded — the wozmon-format text reloads
+        // each range to its address via performCustom (was a dead button before).
+        lastTape = nil
+        lastCustomLoad = (name.uppercased(), Data(text.utf8), false)
     }
 
     // MARK: Snapshots (T6)
