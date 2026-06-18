@@ -210,7 +210,9 @@ final class MachineController {
     /// ROM with typed commands, and run the program when the tape ends.
     private func stageAuthenticACILoad(name: String, bytes: [UInt8],
                                        load: Int, run: String) {
-        placeAll()
+        // Load the machine AS-IS: a cassette can't re-seat chips you pulled
+        // (if essentials are missing it fails like the real hardware). The
+        // connects below are just plugging cables — power, display, the ACI.
         connect(.power); connect(.display); connect(.keyboard)
         connect(.aciCard)
         reset() // a clean wozmon prompt before C100R (place() no longer resets)
@@ -235,7 +237,7 @@ final class MachineController {
 
     private func stageLoad(name: String, bytes: [UInt8],
                            _ action: @escaping () -> Void) {
-        placeAll()
+        // Load the machine AS-IS — don't re-seat chips the user pulled.
         connect(.power); connect(.display); connect(.keyboard)
         connect(.aciCard)
         nowLoading = name
