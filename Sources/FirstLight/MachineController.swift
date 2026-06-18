@@ -754,6 +754,9 @@ final class MachineController {
         sound.chipEject()
         syncSockets()
         if group == .cpu { clearCrashState() } // a pulled CPU isn't "crashed"
+        // Pulling an essential chip while a program runs breaks the machine —
+        // re-engage the crash heuristic so the resulting failure is flagged.
+        if group.essential { ranLoadedProgram = false }
         recentlyRemoved[group] = frame
     }
 

@@ -924,9 +924,15 @@ struct ShelfView: View {
                 .foregroundStyle(.white.opacity(0.5))
                 .padding(.top, 6)
             ForEach(ChipGroup.allCases) { group in
+                let removedAge = controller.pulseFrame
+                    - (controller.recentlyRemoved[group] ?? -1000)
+                let justRemoved = removedAge < 180
+                    ? (removedAge < 120 ? 1.0 : max(0, 1.0 - Double(removedAge - 120) / 60))
+                    : 0
                 ChipShelfItem(group: group,
                               placed: controller.placed.contains(group),
                               highlighted: controller.missingPartsStillOut.contains(group),
+                              justRemoved: justRemoved,
                               toggle: {
                                   if controller.placed.contains(group) {
                                       controller.unplace(group)
@@ -983,10 +989,22 @@ struct ShelfItem: View {
 struct ChipShelfItem: View {
     let group: ChipGroup
     let placed: Bool
-    var highlighted = false
+    var highlighted = false       // needed for a load you tried (yellow)
+    var justRemoved: Double = 0   // recently pulled — orange flash, fading over ~3s
     let toggle: () -> Void
 
     var body: some View {
+        let status = placed ? "Seated"
+            : highlighted ? "Needed — seat it"
+            : justRemoved > 0 ? "Just pulled — double-click to reseat"
+            : "On the shelf"
+        let statusColor: Color = placed ? .green
+            : highlighted ? .yellow
+            : justRemoved > 0 ? .orange : .secondary
+        let ringColor: Color = highlighted ? .yellow.opacity(0.9)
+            : .orange.opacity(justRemoved * 0.9)
+        let glow: Color = highlighted ? .yellow.opacity(0.5)
+            : .orange.opacity(justRemoved * 0.5)
         HStack(spacing: 10) {
             Image(systemName: group.symbol)
                 .font(.system(size: 16))
@@ -994,11 +1012,9 @@ struct ChipShelfItem: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.name)
                     .font(.system(size: 12, weight: .semibold))
-                Text(placed ? "Seated"
-                     : (highlighted ? "Needed — seat it" : "On the shelf"))
+                Text(status)
                     .font(.system(size: 10))
-                    .foregroundStyle(placed ? Color.green
-                                     : (highlighted ? Color.yellow : .secondary))
+                    .foregroundStyle(statusColor)
             }
             Spacer()
             if highlighted {
@@ -1011,8 +1027,8 @@ struct ChipShelfItem: View {
         .background(RoundedRectangle(cornerRadius: 8)
             .fill(Color.white.opacity(placed ? 0.04 : 0.10)))
         .overlay(RoundedRectangle(cornerRadius: 8)
-            .strokeBorder(.yellow.opacity(highlighted ? 0.9 : 0), lineWidth: 1.5))
-        .shadow(color: .yellow.opacity(highlighted ? 0.5 : 0), radius: 6)
+            .strokeBorder(ringColor, lineWidth: 1.5))
+        .shadow(color: glow, radius: 6)
         .foregroundStyle(.white.opacity(placed ? 0.45 : 0.95))
         .contentShape(Rectangle())
         .draggable(group.payload)
