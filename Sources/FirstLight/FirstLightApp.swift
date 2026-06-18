@@ -170,7 +170,7 @@ struct FirstLightApp: App {
                     controller.recordRequested = true
                 }
                 Divider()
-                Toggle("Authentic Load Speed", isOn: Binding(
+                Toggle("Authentic Cassette Load (real-time)", isOn: Binding(
                     get: { controller.authenticLoads },
                     set: { controller.authenticLoads = $0 }))
                 Divider()

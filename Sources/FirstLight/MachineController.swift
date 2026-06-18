@@ -140,9 +140,11 @@ final class MachineController {
             || aciInspectRequested
     }
 
-    /// Authentic load speed: real ACI rate (~1500 bps + leader) instead
-    /// of the ~3-second showcase load. Toggle in the Cassettes menu.
-    var authenticLoads = false
+    /// Authentic load speed: the real ACI bus load — type C100R + the range,
+    /// the bit-true FSK plays in real time (~30 s for BASIC) while the bytes
+    /// arrive off the bus, then run. The DEFAULT, because it's how people
+    /// actually experienced it. Turn it off (Cassettes menu) for a quick load.
+    var authenticLoads = true
 
     /// Cassette loading theater: name of the tape in the deck, or nil.
     private(set) var nowLoading: String?
@@ -211,11 +213,16 @@ final class MachineController {
         placeAll()
         connect(.power); connect(.display); connect(.keyboard)
         connect(.aciCard)
+        reset() // a clean wozmon prompt before C100R (place() no longer resets)
         nowLoading = name
         loadStartFrame = frame
         tapeCounter = 0
         insertedTapeName = name
-        machine.armTape(bytes: bytes, leaderSeconds: 2.5)
+        ranLoadedProgram = load < 0xE000 // a binary runs low-mem; BASIC at $E000 doesn't
+        // 6 s leader: the real wozaci ROM writes a ~3.4 s sync header before it
+        // listens, so a shorter leader never locks on (the load silently fails
+        // after ~30 s). MUST match the audio's 6 s — it's the same signal.
+        machine.armTape(bytes: bytes, leaderSeconds: 6.0)
         let duration = sound.tapePlay(bytes: bytes, authentic: true)
         loadFinishFrame = frame + Int(duration * 60)
         pendingLoad = nil
@@ -436,6 +443,11 @@ final class MachineController {
     private var videoChars = 0
     private var autoTypeQueue: [UInt8] = []
     @ObservationIgnored private var silentLowFrames = 0
+    /// True while a program WE loaded/ran is executing — it legitimately lives
+    /// below $E000 and may sit in a keyboard-poll loop (Microchess, Lunar
+    /// Lander…) or grind on a long compute (Mandelbrot). Suppresses the crash
+    /// heuristic, which is only meant for the user manually jumping into garbage.
+    @ObservationIgnored private var ranLoadedProgram = false
 
     /// True when the CPU has been executing low memory with no output for
     /// a couple of seconds — the classic "ran garbage, hit BRK, looping
@@ -498,7 +510,7 @@ final class MachineController {
             update(.video, Double(videoChars))
             // Crash heuristic: ROM/BASIC live at $E000+, so a quiet CPU
             // below that is running garbage, not waiting for input.
-            if machine.pc < 0xE000 && videoChars == 0 {
+            if !ranLoadedProgram && machine.pc < 0xE000 && videoChars == 0 {
                 silentLowFrames += 1
                 if silentLowFrames == 121 { looksCrashed = true }
             } else {
@@ -655,6 +667,7 @@ final class MachineController {
             poweredFrame = nil
             cancelInFlightLoad()
             clearCrashState()
+            ranLoadedProgram = false
         }
     }
 
@@ -688,7 +701,7 @@ final class MachineController {
     var reseatHintActive: Bool { pulseFrame < reseatHintUntil }
 
     func place(_ group: ChipGroup) {
-        placed.insert(group)
+        guard placed.insert(group).inserted else { return } // already seated → no-op
         sound.chipSeat()
         syncSockets()
         // Hot-seating the brain or its ROM restarts execution cleanly
@@ -739,6 +752,7 @@ final class MachineController {
             reset()
         }
         autoType(program.text)
+        ranLoadedProgram = !program.needsBASIC // an ML demo runs low-mem, not a crash
     }
 
     /// Insert a cassette: sets the machine up, loads the tape the way
@@ -814,6 +828,7 @@ final class MachineController {
             reset()
             machine.load(bytes, at: load)
             autoType("\(run)\n")
+            ranLoadedProgram = true // a loaded ML program, not a crash
         }
     }
 
@@ -955,6 +970,10 @@ final class MachineController {
         }
         sound.tapeLoad() // a little record-head chirp for the moment
         insertedTapeName = name.uppercased()
+        // PLAY replays what you just recorded — the wozmon-format text reloads
+        // each range to its address via performCustom (was a dead button before).
+        lastTape = nil
+        lastCustomLoad = (name.uppercased(), Data(text.utf8), false)
     }
 
     // MARK: Snapshots (T6)
@@ -1088,6 +1107,7 @@ final class MachineController {
     func reset() {
         guard powered else { return }
         clearCrashState()
+        ranLoadedProgram = false // back at the bare monitor; re-arm crash detection
         machine.reset()
     }
 
@@ -1101,6 +1121,6 @@ final class MachineController {
               let basic = try? ROM.integerBASIC() else { return }
         reset()
         machine.load(basic, at: 0xE000)
-        machine.type("E000R\n")
+        autoType("E000R\n") // typed at human speed, not dumped instantly
     }
 }

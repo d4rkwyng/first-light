@@ -86,5 +86,10 @@ echo "(icon stale? run: killall Dock Finder)"
 if (( INSTALL )); then
     rm -rf "/Applications/First Light.app"
     cp -R "$APP" /Applications/
+    # Launchpad shows only the installed copy — the dist build artifact has the
+    # same bundle id, so leaving it registered makes a duplicate app appear.
+    LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+    "$LSREG" -f "/Applications/First Light.app" 2>/dev/null || true
+    "$LSREG" -u "$APP" 2>/dev/null || true
     echo "installed to /Applications/First Light.app"
 fi
