@@ -538,7 +538,7 @@ final class MachineController {
         }
 
         // A detuned V-HOLD or a warming tube needs continuous redraws
-        if abs(vHold) > 0.08 || (powered && crtWarmth < 1) {
+        if abs(vHold) > 0.08 || (powered && crtEffects && crtWarmth < 1) {
             displayRevision += 1
         }
         // Phosphor ghosts: keep redrawing while anything is fading (and on the
@@ -920,6 +920,7 @@ final class MachineController {
         // Unpowered: the key clicks but nothing registers — say why, like the
         // physical keyboard does, instead of giving silent false feedback.
         guard powered else { typingHintUntil = frame + 480; return }
+        guard autoTypeQueue.isEmpty else { return } // don't garble an autotyped line
         machine.press(ascii)
     }
 
@@ -1070,6 +1071,13 @@ final class MachineController {
 
     private func handle(keyCode: UInt16, characters: String?, command: Bool) -> Bool {
         if command { return false }
+        // ESC in full-screen is purely the exit gesture — works even on a dark
+        // tube, and never leaks a 0x1B line-cancel into a monitor input line.
+        if keyCode == 53, fullScreenDisplay {
+            if frame - lastEscFrame < 35 { fullScreenDisplay = false }
+            lastEscFrame = frame
+            return true
+        }
         guard powered, connected.contains(.keyboard) else {
             // typing at a deaf machine: after a few keys, say why
             if frame - lastStrayFrame > 300 { strayKeys = 0 }
@@ -1081,12 +1089,7 @@ final class MachineController {
         // While the tutorial is "typing", swallow the user's keys —
         // interleaving the two garbles the demo input line.
         if !autoTypeQueue.isEmpty { return true }
-        if keyCode == 53 { // esc — Woz Monitor line cancel
-            if fullScreenDisplay, frame - lastEscFrame < 35 {
-                fullScreenDisplay = false // double-ESC exits full screen
-                return true
-            }
-            lastEscFrame = frame
+        if keyCode == 53 { // esc — Woz Monitor line cancel (full-screen handled above)
             machine.press(0x1B)
             keyFlash = (0x1B, frame)
             sound.keyClick()

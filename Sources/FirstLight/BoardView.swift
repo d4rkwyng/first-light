@@ -716,7 +716,10 @@ struct BoardView: View {
                     .gesture(
                         DragGesture(minimumDistance: 4)
                             .onChanged { value in
-                                guard present, chip.style != .heatsink else { return }
+                                // only seated, PULLABLE chips lift — soldered
+                                // parts (group == nil) and the heatsink don't
+                                guard present, chip.group != nil,
+                                      chip.style != .heatsink else { return }
                                 if liftedChip != chip.id {
                                     controller.sound.chipPick()
                                 }
