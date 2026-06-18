@@ -297,11 +297,35 @@ public final class Apple1 {
 
     public func peek(_ address: UInt16) -> UInt8 { mem[Int(address)] }
 
-    /// A copy of a memory range (for tape recording and the Scope).
+    /// A copy of a memory range (for tape recording).
     public func read(from: Int, to: Int) -> [UInt8] {
         let lo = max(0, min(from, 0xFFFF))
         let hi = max(lo, min(to, 0xFFFF))
         return Array(mem[lo...hi])
+    }
+
+    /// What the CPU would READ at `address` right now — floating 0xFF over empty
+    /// sockets, the ACI ROM at $C0/$C1xx, the PIA registers. Side-effect-free,
+    /// unlike `busRead` (no activity counted, no key consumed, no tape advanced):
+    /// the Scope's panes must show exactly what the 6502 sees, not the raw array.
+    public func busPeek(_ address: UInt16) -> UInt8 {
+        switch address {
+        case Apple1.kbd:   return piaInstalled ? (lastKey | 0x80) : 0xFF
+        case Apple1.kbdcr: return piaInstalled ? ((keyQueue.isEmpty ? 0x00 : 0x80) | (kbdCR & 0x3F)) : 0x00
+        case Apple1.dsp:   return piaInstalled ? (dspPending ? 0x80 : 0x00) : 0x00
+        case Apple1.dspcr: return dspCR & 0x3F
+        case 0x0000...0x0FFF: return ramWInstalled ? mem[Int(address)] : 0xFF
+        case 0xE000...0xEFFF: return ramXInstalled ? mem[Int(address)] : 0x00
+        case 0xC000...0xC1FF: return aciInstalled ? aciROM[Int(address) & 0xFF] : 0xFF
+        case 0xFF00...0xFFFF: return romInstalled ? mem[Int(address)] : 0xFF
+        default: return mem[Int(address)]
+        }
+    }
+
+    /// Range version of `busPeek`, for the Scope's memory dump.
+    public func busPeek(from: Int, to: Int) -> [UInt8] {
+        let lo = max(0, min(from, 0xFFFF)), hi = max(lo, min(to, 0xFFFF))
+        return (lo...hi).map { busPeek(UInt16($0)) }
     }
 
     // MARK: Bus (called from the fake6502 trampolines)
