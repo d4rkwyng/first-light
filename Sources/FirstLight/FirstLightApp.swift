@@ -173,6 +173,9 @@ struct FirstLightApp: App {
                 Toggle("Authentic Cassette Load (real-time)", isOn: Binding(
                     get: { controller.authenticLoads },
                     set: { controller.authenticLoads = $0 }))
+                Toggle("Warn about missing parts", isOn: Binding(
+                    get: { controller.missingPartHints },
+                    set: { controller.missingPartHints = $0 }))
                 Divider()
                 Menu("Type-In Programs") {
                     ForEach(Programs.all) { program in

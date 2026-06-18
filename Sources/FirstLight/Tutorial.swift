@@ -117,9 +117,9 @@ enum Tutorial {
             title: "Loading BASIC (the $75 upgrade)",
             body: "Hit ⌘R to stop that loop. Now drag the cassette "
                 + "interface into the EXPANSION slot — in 1976 you'd play a "
-                + "cassette of Woz's hand-written BASIC into it for a "
-                + "minute and a half. Press ⌘B to load it and jump to "
-                + "$E000. Watch RAM bank X fill up.",
+                + "cassette of Woz's hand-written BASIC into it, minutes of "
+                + "squealing tape. Press ⌘B to load it; you're there when "
+                + "BASIC's > prompt appears. Watch RAM bank X fill up.",
             action: { c in
                 c.placeAll()
                 c.connect(.power); c.connect(.display); c.connect(.keyboard)
@@ -225,7 +225,8 @@ enum Tutorial {
             isComplete: { _, new in new.contains("HELLO FROM 1976") }),
         TutorialStep(
             title: "The 1976 software library",
-            body: "Nine cassettes existed. Open the Cassettes menu and pick "
+            body: "Apple's library, plus a little modern homebrew. Open the "
+                + "Cassettes menu and pick "
                 + "one — Hamurabi is a kingdom-management game from before "
                 + "that genre had a name. The deck spins, the tape squeals, "
                 + "the program runs.",

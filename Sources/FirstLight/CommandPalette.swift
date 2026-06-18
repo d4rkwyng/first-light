@@ -45,7 +45,7 @@ enum Palette {
         },
         PaletteAction(title: "List the BASIC program",
                       detail: "LIST at the > prompt") {
-            $0.autoType("LIST\n")
+            $0.connectEverything(); $0.autoType("LIST\n")
         },
         PaletteAction(title: "Reset the machine",
                       detail: "the panic button (⌘R)") {

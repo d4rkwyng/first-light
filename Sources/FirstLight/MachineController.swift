@@ -210,7 +210,9 @@ final class MachineController {
     /// ROM with typed commands, and run the program when the tape ends.
     private func stageAuthenticACILoad(name: String, bytes: [UInt8],
                                        load: Int, run: String) {
-        placeAll()
+        // Load the machine AS-IS: a cassette can't re-seat chips you pulled
+        // (if essentials are missing it fails like the real hardware). The
+        // connects below are just plugging cables — power, display, the ACI.
         connect(.power); connect(.display); connect(.keyboard)
         connect(.aciCard)
         reset() // a clean wozmon prompt before C100R (place() no longer resets)
@@ -235,7 +237,7 @@ final class MachineController {
 
     private func stageLoad(name: String, bytes: [UInt8],
                            _ action: @escaping () -> Void) {
-        placeAll()
+        // Load the machine AS-IS — don't re-seat chips the user pulled.
         connect(.power); connect(.display); connect(.keyboard)
         connect(.aciCard)
         nowLoading = name
@@ -538,7 +540,7 @@ final class MachineController {
         }
 
         // A detuned V-HOLD or a warming tube needs continuous redraws
-        if abs(vHold) > 0.08 || (powered && crtWarmth < 1) {
+        if abs(vHold) > 0.08 || (powered && crtEffects && crtWarmth < 1) {
             displayRevision += 1
         }
         // Phosphor ghosts: keep redrawing while anything is fading (and on the
@@ -700,6 +702,40 @@ final class MachineController {
     private(set) var reseatHintUntil = 0
     var reseatHintActive: Bool { pulseFrame < reseatHintUntil }
 
+    /// Missing-part warning: trying to load a cassette without a chip set it
+    /// needs names the part (info bar), glows it in the shelf, and stops the
+    /// doomed ~30 s load early — unless the owner turns the warnings off.
+    var missingPartHints = true
+    @ObservationIgnored private var missingPartsHintUntil = 0
+    private(set) var missingPartsFlagged: [ChipGroup] = []
+    /// The flagged parts still on the shelf — clears as they're seated, or times out.
+    var missingPartsStillOut: [ChipGroup] {
+        guard pulseFrame < missingPartsHintUntil else { return [] }
+        return missingPartsFlagged.filter { !placed.contains($0) }
+    }
+    var missingPartsHintActive: Bool { !missingPartsStillOut.isEmpty }
+
+    /// Chip sets THIS tape needs that are on the shelf — it can't load or run
+    /// without them. BASIC (and BASIC programs) also need bank X.
+    func missingParts(for tape: Tape) -> [ChipGroup] {
+        var needed = Set(ChipGroup.allCases.filter(\.essential))
+        switch tape.kind {
+        case .integerBASIC, .basicSource, .basicImage: needed.insert(.ramX)
+        case .binary: break
+        }
+        return ChipGroup.allCases.filter { needed.contains($0) && !placed.contains($0) }
+    }
+
+    /// Flag the missing parts and block the load. Returns true if blocked.
+    private func blockedByMissingParts(_ tape: Tape) -> Bool {
+        let missing = missingParts(for: tape)
+        guard !missing.isEmpty, missingPartHints else { return false }
+        missingPartsFlagged = missing
+        missingPartsHintUntil = frame + 720 // ~12 s, or until they're seated
+        sound.chipEject() // a small mechanical "nope"
+        return true
+    }
+
     func place(_ group: ChipGroup) {
         guard placed.insert(group).inserted else { return } // already seated → no-op
         sound.chipSeat()
@@ -718,6 +754,9 @@ final class MachineController {
         sound.chipEject()
         syncSockets()
         if group == .cpu { clearCrashState() } // a pulled CPU isn't "crashed"
+        // Pulling an essential chip while a program runs breaks the machine —
+        // re-engage the crash heuristic so the resulting failure is flagged.
+        if group.essential { ranLoadedProgram = false }
         recentlyRemoved[group] = frame
     }
 
@@ -760,6 +799,13 @@ final class MachineController {
     /// and runs it.
     func insert(_ tape: Tape) {
         ensure6502()
+        if blockedByMissingParts(tape) {
+            // keep it "in the deck" so PLAY retries once you seat the parts
+            lastTape = tape
+            lastCustomLoad = nil
+            insertedTapeName = tape.name
+            return
+        }
         lastTape = tape
         lastCustomLoad = nil
         if authenticLoads {
@@ -915,9 +961,13 @@ final class MachineController {
     /// needed (using it IS plugging it in), then types.
     func typeKey(_ ascii: UInt8) {
         if !connected.contains(.keyboard) { connect(.keyboard) }
-        machine.press(ascii)
         keyFlash = (ascii, frame)
-        sound.keyClick()
+        sound.keyClick() // the Datanetics key clicks mechanically even when off
+        // Unpowered: the key clicks but nothing registers — say why, like the
+        // physical keyboard does, instead of giving silent false feedback.
+        guard powered else { typingHintUntil = frame + 480; return }
+        guard autoTypeQueue.isEmpty else { return } // don't garble an autotyped line
+        machine.press(ascii)
     }
 
     /// The Datanetics CLR SCR key: hardware-clears the terminal.
@@ -1033,7 +1083,7 @@ final class MachineController {
     func saveSnapshot() {
         guard let data = encodeBenchState() else { return }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Apple-1 Session.a1state"
+        panel.nameFieldStringValue = "Apple-1 Session.json" // match allowedContentTypes
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try? data.write(to: url)
@@ -1067,6 +1117,13 @@ final class MachineController {
 
     private func handle(keyCode: UInt16, characters: String?, command: Bool) -> Bool {
         if command { return false }
+        // ESC in full-screen is purely the exit gesture — works even on a dark
+        // tube, and never leaks a 0x1B line-cancel into a monitor input line.
+        if keyCode == 53, fullScreenDisplay {
+            if frame - lastEscFrame < 35 { fullScreenDisplay = false }
+            lastEscFrame = frame
+            return true
+        }
         guard powered, connected.contains(.keyboard) else {
             // typing at a deaf machine: after a few keys, say why
             if frame - lastStrayFrame > 300 { strayKeys = 0 }
@@ -1078,12 +1135,7 @@ final class MachineController {
         // While the tutorial is "typing", swallow the user's keys —
         // interleaving the two garbles the demo input line.
         if !autoTypeQueue.isEmpty { return true }
-        if keyCode == 53 { // esc — Woz Monitor line cancel
-            if fullScreenDisplay, frame - lastEscFrame < 35 {
-                fullScreenDisplay = false // double-ESC exits full screen
-                return true
-            }
-            lastEscFrame = frame
+        if keyCode == 53 { // esc — Woz Monitor line cancel (full-screen handled above)
             machine.press(0x1B)
             keyFlash = (0x1B, frame)
             sound.keyClick()
