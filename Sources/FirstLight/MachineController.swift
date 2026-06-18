@@ -915,9 +915,12 @@ final class MachineController {
     /// needed (using it IS plugging it in), then types.
     func typeKey(_ ascii: UInt8) {
         if !connected.contains(.keyboard) { connect(.keyboard) }
-        machine.press(ascii)
         keyFlash = (ascii, frame)
-        sound.keyClick()
+        sound.keyClick() // the Datanetics key clicks mechanically even when off
+        // Unpowered: the key clicks but nothing registers — say why, like the
+        // physical keyboard does, instead of giving silent false feedback.
+        guard powered else { typingHintUntil = frame + 480; return }
+        machine.press(ascii)
     }
 
     /// The Datanetics CLR SCR key: hardware-clears the terminal.
@@ -1033,7 +1036,7 @@ final class MachineController {
     func saveSnapshot() {
         guard let data = encodeBenchState() else { return }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Apple-1 Session.a1state"
+        panel.nameFieldStringValue = "Apple-1 Session.json" // match allowedContentTypes
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try? data.write(to: url)

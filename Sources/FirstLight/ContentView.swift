@@ -239,7 +239,7 @@ struct ContentView: View {
                     takeTour: {
                         showWelcome = false
                         controller.welcomeRequested = false
-                        controller.startTutorial()
+                        controller.startTutorial(track: 0) // always the intro track, powered up
                     },
                     explore: {
                         showWelcome = false

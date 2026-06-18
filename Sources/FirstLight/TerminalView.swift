@@ -93,9 +93,12 @@ struct TerminalView: View {
         // Phosphor warm-up: dim and slightly bloomy until the tube heats
         .opacity(controller.crtEffects ? 0.25 + 0.75 * controller.crtWarmth : 1)
         .brightness(controller.crtBrightness * 0.25
-                    - (controller.crtEffects ? (1 - controller.crtWarmth) * 0.18 : 0))
+                    - (controller.crtEffects ? (1 - controller.crtWarmth) * 0.18 : 0)
+                    + min(0, controller.crtContrast) * 0.28) // contrast down dims green toward black
         .blur(radius: controller.crtEffects ? (1 - controller.crtWarmth) * 1.6 : 0)
-        .contrast(1 + controller.crtContrast * 0.5)
+        // up = more punch; never below 1 (SwiftUI .contrast pivots on mid-gray,
+        // which would lift the black glass to gray — a real CONTRAST dims the phosphor).
+        .contrast(1 + max(0, controller.crtContrast) * 0.6)
         .aspectRatio(40.0 * 7.0 / (24.0 * 9.0), contentMode: .fit)
         .padding(8)
         .background(Color.black)
