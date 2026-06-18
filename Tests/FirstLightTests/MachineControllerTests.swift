@@ -124,4 +124,18 @@ struct MachineControllerTests {
         #expect(c.cpuVariant == .m6800)
         #expect(c.powered)
     }
+
+    // MARK: Missing-part warning
+
+    @Test func missingPartsForLoadReflectsPulledChips() {
+        let c = makeController() // starts fully assembled
+        let binary = TapeLibrary.tapes.first { if case .binary = $0.kind { return true }; return false }!
+        let basic = TapeLibrary.tapes.first { if case .integerBASIC = $0.kind { return true }; return false }!
+        #expect(c.missingParts(for: binary).isEmpty)
+        c.unplace(.proms)
+        #expect(c.missingParts(for: binary).contains(.proms)) // can't run without the PROMs
+        c.unplace(.ramX) // bank X is the BASIC upgrade
+        #expect(!c.missingParts(for: binary).contains(.ramX)) // a binary doesn't need it
+        #expect(c.missingParts(for: basic).contains(.ramX))   // BASIC does
+    }
 }

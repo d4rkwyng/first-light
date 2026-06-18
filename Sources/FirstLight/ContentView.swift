@@ -461,7 +461,8 @@ struct CompactShelf: View {
                     .font(.system(size: 14))
                     .foregroundStyle(controller.placed.contains(group)
                                      ? Color.green.opacity(0.55)
-                                     : Color.orange)
+                                     : controller.missingPartsStillOut.contains(group)
+                                       ? Color.yellow : Color.orange)
                     .symbolEffect(.pulse,
                                   isActive: !controller.placed.contains(group))
                     .frame(width: 30, height: 24)
@@ -925,6 +926,7 @@ struct ShelfView: View {
             ForEach(ChipGroup.allCases) { group in
                 ChipShelfItem(group: group,
                               placed: controller.placed.contains(group),
+                              highlighted: controller.missingPartsStillOut.contains(group),
                               toggle: {
                                   if controller.placed.contains(group) {
                                       controller.unplace(group)
@@ -981,6 +983,7 @@ struct ShelfItem: View {
 struct ChipShelfItem: View {
     let group: ChipGroup
     let placed: Bool
+    var highlighted = false
     let toggle: () -> Void
 
     var body: some View {
@@ -991,15 +994,25 @@ struct ChipShelfItem: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.name)
                     .font(.system(size: 12, weight: .semibold))
-                Text(placed ? "Seated" : "On the shelf")
+                Text(placed ? "Seated"
+                     : (highlighted ? "Needed — seat it" : "On the shelf"))
                     .font(.system(size: 10))
-                    .foregroundStyle(placed ? Color.green : .secondary)
+                    .foregroundStyle(placed ? Color.green
+                                     : (highlighted ? Color.yellow : .secondary))
             }
             Spacer()
+            if highlighted {
+                Image(systemName: "arrow.right") // drag it onto the board →
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.yellow)
+            }
         }
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 8)
             .fill(Color.white.opacity(placed ? 0.04 : 0.10)))
+        .overlay(RoundedRectangle(cornerRadius: 8)
+            .strokeBorder(.yellow.opacity(highlighted ? 0.9 : 0), lineWidth: 1.5))
+        .shadow(color: .yellow.opacity(highlighted ? 0.5 : 0), radius: 6)
         .foregroundStyle(.white.opacity(placed ? 0.45 : 0.95))
         .contentShape(Rectangle())
         .draggable(group.payload)
@@ -1080,6 +1093,15 @@ struct InfoBar: View {
     }
 
     private var nextStep: (text: String, isFact: Bool) {
+        if controller.missingPartsHintActive {
+            let parts = controller.missingPartsStillOut
+            let names = parts.map(\.name).joined(separator: ", ")
+            let isAre = parts.count == 1 ? "is" : "are"
+            let them = parts.count == 1 ? "it" : "them"
+            return ("This tape needs the \(names) — \(isAre) on the shelf. Seat "
+                + "\(them) (highlighted at left), then press PLAY again. Turn this "
+                + "off in Cassettes ▸ Warn about missing parts.", false)
+        }
         if controller.looksCrashed {
             return ("The 6502 wandered into empty memory and crashed — "
                 + "authentically. ⌘R is the reset switch. (Tip: RUN only "

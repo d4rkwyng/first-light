@@ -702,6 +702,40 @@ final class MachineController {
     private(set) var reseatHintUntil = 0
     var reseatHintActive: Bool { pulseFrame < reseatHintUntil }
 
+    /// Missing-part warning: trying to load a cassette without a chip set it
+    /// needs names the part (info bar), glows it in the shelf, and stops the
+    /// doomed ~30 s load early — unless the owner turns the warnings off.
+    var missingPartHints = true
+    @ObservationIgnored private var missingPartsHintUntil = 0
+    private(set) var missingPartsFlagged: [ChipGroup] = []
+    /// The flagged parts still on the shelf — clears as they're seated, or times out.
+    var missingPartsStillOut: [ChipGroup] {
+        guard pulseFrame < missingPartsHintUntil else { return [] }
+        return missingPartsFlagged.filter { !placed.contains($0) }
+    }
+    var missingPartsHintActive: Bool { !missingPartsStillOut.isEmpty }
+
+    /// Chip sets THIS tape needs that are on the shelf — it can't load or run
+    /// without them. BASIC (and BASIC programs) also need bank X.
+    func missingParts(for tape: Tape) -> [ChipGroup] {
+        var needed = Set(ChipGroup.allCases.filter(\.essential))
+        switch tape.kind {
+        case .integerBASIC, .basicSource, .basicImage: needed.insert(.ramX)
+        case .binary: break
+        }
+        return ChipGroup.allCases.filter { needed.contains($0) && !placed.contains($0) }
+    }
+
+    /// Flag the missing parts and block the load. Returns true if blocked.
+    private func blockedByMissingParts(_ tape: Tape) -> Bool {
+        let missing = missingParts(for: tape)
+        guard !missing.isEmpty, missingPartHints else { return false }
+        missingPartsFlagged = missing
+        missingPartsHintUntil = frame + 720 // ~12 s, or until they're seated
+        sound.chipEject() // a small mechanical "nope"
+        return true
+    }
+
     func place(_ group: ChipGroup) {
         guard placed.insert(group).inserted else { return } // already seated → no-op
         sound.chipSeat()
@@ -762,6 +796,13 @@ final class MachineController {
     /// and runs it.
     func insert(_ tape: Tape) {
         ensure6502()
+        if blockedByMissingParts(tape) {
+            // keep it "in the deck" so PLAY retries once you seat the parts
+            lastTape = tape
+            lastCustomLoad = nil
+            insertedTapeName = tape.name
+            return
+        }
         lastTape = tape
         lastCustomLoad = nil
         if authenticLoads {
