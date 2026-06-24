@@ -10,8 +10,9 @@ struct Tape: Identifiable {
         case integerBASIC                      // tape #1: BASIC itself
         case basicSource(file: String)         // type listing into BASIC, RUN
         case binary(file: String, load: UInt16, run: String)
-        /// A warm-start BASIC memory image without its pointer block —
-        /// we rebuild the zero-page pointers ($CA/$E4/$E6 = start).
+        /// A BASIC memory image without its pointer block — we rebuild
+        /// Integer BASIC's real zero-page pointers (LOMEM $4A, HIMEM $4C,
+        /// PP $CA, PV $CC) around it before RUN.
         case basicImage(file: String, load: UInt16)
     }
 

@@ -171,4 +171,30 @@ func runUntil(_ machine: Apple1, contains needle: String,
         #expect(String(m.terminal.transcript.dropFirst(before.count)).contains(">"),
                 "BASIC prompt should appear after the authentic tape read")
     }
+
+    @Test func pokedHimemGivesBigListingsRoom() throws {
+        // Apple-1 Integer BASIC's cold start hardcodes HIMEM=$1000 (mem_init_4k
+        // at $EFD3) — under 2 KB for program + variables, which the larger
+        // cassette listings overflow with *** MEM FULL ERR. This ROM has NO
+        // HIMEM: statement (that's an Apple II addition), so the load paths
+        // poke the HIMEM pointer ($4C/$4D) up to $2000 — the 8 KB board the
+        // library needed. Confirm the cold-start cap, then that the poke lets a
+        // listing well past 2 KB fit.
+        let m = try Apple1()
+        m.displayCyclesPerChar = 0
+        m.load(try ROM.integerBASIC(), at: 0xE000)
+        m.type("E000R\n")
+        m.run(cycles: 6_000_000) // cold start
+        #expect(Int(m.peek(0x4C)) | (Int(m.peek(0x4D)) << 8) == 0x1000,
+                "cold start should cap HIMEM at $1000")
+        m.load([0x00, 0x20], at: 0x4C) // poke HIMEM := $2000
+        var listing = ""
+        for n in stride(from: 100, through: 990, by: 10) { // 90 lines, ~4 KB
+            listing += "\(n) PRINT \"FIFTY YEARS OF APPLE COMPUTER COMPANY\"\n"
+        }
+        m.type(listing)
+        m.run(cycles: 120_000_000)
+        #expect(!m.terminal.transcript.contains("MEM FULL"),
+                "with HIMEM poked to $2000 a ~4 KB listing should fit")
+    }
 }

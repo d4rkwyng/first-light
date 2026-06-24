@@ -138,4 +138,40 @@ struct MachineControllerTests {
         #expect(!c.missingParts(for: binary).contains(.ramX)) // a binary doesn't need it
         #expect(c.missingParts(for: basic).contains(.ramX))   // BASIC does
     }
+
+    // MARK: Cassette speed applies to the load that's already running
+
+    @Test func loadSpeedTracksCpuSpeedAndRealtimeToggle() {
+        let c = makeController()
+        c.authenticLoads = true; c.turboFactor = 1
+        #expect(c.loadSpeed == 1)          // real-time
+        c.turboFactor = 100
+        #expect(c.loadSpeed == 100)        // crank CPU Speed → load speeds up
+        c.turboFactor = 1; c.authenticLoads = false
+        #expect(c.loadSpeed >= 12)         // drop the real-time toggle → quick load
+    }
+
+    @Test func crankingCpuSpeedMidLoadFinishesItSooner() {
+        let c = makeController()
+        c.connectEverything()
+        c.authenticLoads = true
+        let basic = TapeLibrary.tapes.first {
+            if case .integerBASIC = $0.kind { return true }; return false
+        }!
+        // real-time (1×): how many frames the authentic load spans
+        c.turboFactor = 1
+        c.insert(basic)
+        #expect(c.nowLoading != nil)
+        var slow = 0
+        while c.nowLoading != nil && slow < 200_000 { c.advanceLoad(); slow += 1 }
+        #expect(slow > 100, "an authentic real-time load should span many frames")
+        // ×100: the SAME tape finishes in far fewer frames
+        c.turboFactor = 100
+        c.insert(basic)
+        #expect(c.nowLoading != nil)
+        var fast = 0
+        while c.nowLoading != nil && fast < 200_000 { c.advanceLoad(); fast += 1 }
+        #expect(fast * 10 < slow,
+                "×100 should finish the load far sooner (\(fast) vs \(slow))")
+    }
 }
