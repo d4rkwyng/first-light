@@ -957,14 +957,19 @@ final class MachineController {
     /// caps flash to match.
     private(set) var keyFlash: (ascii: UInt8, frame: Int)?
 
-    /// A click on the on-screen keyboard: connects the keyboard if
-    /// needed (using it IS plugging it in), then types.
+    /// A click on the on-screen keyboard. Clicks mechanically and flashes the
+    /// cap, but only registers when the keyboard is actually plugged in.
     func typeKey(_ ascii: UInt8) {
-        if !connected.contains(.keyboard) { connect(.keyboard) }
         keyFlash = (ascii, frame)
         sound.keyClick() // the Datanetics key clicks mechanically even when off
-        // Unpowered: the key clicks but nothing registers — say why, like the
-        // physical keyboard does, instead of giving silent false feedback.
+        // A keyboard you unplugged stays unplugged — clicking a key is using
+        // the keyboard, not re-seating it. Say why and point the user back to
+        // the socket, exactly as the physical keyboard does for stray keys.
+        guard connected.contains(.keyboard) else {
+            typingHintUntil = frame + 480; return
+        }
+        // Unpowered: the key clicks but nothing registers — say why, instead
+        // of giving silent false feedback.
         guard powered else { typingHintUntil = frame + 480; return }
         guard autoTypeQueue.isEmpty else { return } // don't garble an autotyped line
         machine.press(ascii)

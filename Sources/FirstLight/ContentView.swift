@@ -198,8 +198,8 @@ struct ContentView: View {
                     Image(systemName: "keyboard.badge.exclamationmark")
                     Text(controller.connected.contains(.keyboard)
                          ? "No power — connect the power supply first."
-                         : "No keyboard connected — double-click its shelf icon, "
-                         + "click any on-screen key, or drag it to its socket.")
+                         : "No keyboard connected — double-click its shelf icon "
+                         + "or drag it to its socket to plug it back in.")
                 }
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.black)
@@ -1136,15 +1136,8 @@ struct InfoBar: View {
                 + "loaded, type E2B3R to re-enter it with your program "
                 + "intact. (Real Apple-1s worked exactly this way.)", false)
         }
-        if controller.typingHintActive {
-            if !controller.connected.contains(.keyboard) {
-                return ("You're typing, but no keyboard is connected — "
-                    + "double-click its shelf icon, click any on-screen "
-                    + "key, or drag it to its socket on the board.", false)
-            }
-            return ("You're typing, but the machine has no power — "
-                + "connect the power supply first.", false)
-        }
+        // (No keyboard / no power while typing is handled by the orange
+        // capsule overlay — not duplicated here as a tip.)
         if controller.powered, !controller.placed.contains(.cpu) {
             return ("No CPU: the board is warm but nothing is thinking. "
                 + "Note the screen holds its last image — the terminal "
