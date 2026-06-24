@@ -102,15 +102,15 @@ struct TapeDeckBar: View {
         .frame(minWidth: 330, maxWidth: 470)
         .animation(.spring(response: 0.4, dampingFraction: 0.8),
                    value: controller.insertedTapeName != nil)
-        // One deck gesture: double-click opens the cassette library (the
-        // grouped, blurb-rich chooser). The menu-bar Cassettes menu is the
-        // full surface; the old right-click menu was a redundant, ungrouped
-        // third path, so it's gone.
+        // Double-click AND right-click open the exact same chooser popover.
+        // A native `.contextMenu` can't render the blurb-rich popover, so the
+        // right-click is caught by a background NSView that trips the same flag.
         .onTapGesture(count: 2) { showChooser = true }
+        .overlay(RightClickCatcher { showChooser = true })
         .popover(isPresented: $showChooser, arrowEdge: .top) {
             TapeChooser(controller: controller, dismiss: { showChooser = false })
         }
-        .help("Double-click to pick a cassette")
+        .help("Double-click — or right-click — to pick a cassette")
     }
 
     @ViewBuilder
@@ -204,6 +204,43 @@ struct TapeDeckBar: View {
             }
         }
         .frame(width: 40, height: 40)
+    }
+}
+
+
+/// Catches a secondary (right) click and runs `action`. SwiftUI's
+/// `.contextMenu` can only show a native menu, so to make right-click open
+/// the *same* popover as a double-click we overlay this transparent view.
+/// `hitTest` claims the click ONLY when the current event is a right-click —
+/// every other event returns nil and falls through to the SwiftUI content
+/// below (so the piano keys still take their normal left-clicks).
+private struct RightClickCatcher: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let v = Catcher()
+        v.action = action
+        return v
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? Catcher)?.action = action
+    }
+
+    final class Catcher: NSView {
+        var action: () -> Void = {}
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            // Only intercept right-clicks (incl. control-click); pass the rest
+            // through so left-clicks reach the deck controls underneath.
+            guard let e = NSApp.currentEvent else { return nil }
+            let isRightClick = e.type == .rightMouseDown
+                || (e.type == .leftMouseDown && e.modifierFlags.contains(.control))
+            return isRightClick ? self : nil
+        }
+
+        override func rightMouseDown(with event: NSEvent) { action() }
+        override func mouseDown(with event: NSEvent) { action() } // control-click
     }
 }
 
