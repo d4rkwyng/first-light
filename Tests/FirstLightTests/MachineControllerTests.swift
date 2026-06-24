@@ -151,6 +151,19 @@ struct MachineControllerTests {
         #expect(c.loadSpeed >= 12)         // drop the real-time toggle → quick load
     }
 
+    // MARK: Drop zones don't cover each other
+
+    @Test func videoDropZoneClearsTheRAMChips() {
+        // The terminal-section chips scatter into row B, level with RAM-X, so
+        // a full bounding box would put the video drop zone on top of the
+        // RAM-X chips and steal their clicks/drops. The zone is bounded to the
+        // top rows; assert it sits entirely above the RAM-X and RAM-W zones.
+        let video = BoardView.zone(for: .video)
+        #expect(video.maxY <= BoardView.zone(for: .ramX).minY)
+        #expect(video.maxY <= BoardView.zone(for: .ramW).minY)
+        #expect(video.width > 0 && video.height > 0) // still a real target
+    }
+
     @Test func crankingCpuSpeedMidLoadFinishesItSooner() {
         let c = makeController()
         c.connectEverything()

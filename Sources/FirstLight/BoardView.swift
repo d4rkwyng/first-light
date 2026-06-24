@@ -367,12 +367,23 @@ struct BoardView: View {
 
     static func zone(for group: ChipGroup) -> CGRect {
         switch group {
-        case .video: CGRect(x: 36, y: 146, width: 900, height: 262)
-        case .proms: CGRect(x: col(1) - 22, y: 468, width: 96, height: 62)
-        case .pia: CGRect(x: col(4) - 80, y: 470, width: 160, height: 60)
-        case .cpu: CGRect(x: col(7) - 80, y: 470, width: 160, height: 60)
-        case .ramX: CGRect(x: col(11) - 26, y: 330, width: 420, height: 66)
-        case .ramW: CGRect(x: col(11) - 26, y: 462, width: 420, height: 68)
+        case .video:
+            // The terminal section's chips scatter across rows D, C AND B —
+            // and the row-B ones (shift registers, the 74154) sit at the same
+            // height as the RAM-X chips. The old fixed 900×262 slab (and any
+            // full bounding box) therefore covered RAM-X and stole its hover,
+            // double-click and drops. Bound the drop TARGET to the top rows
+            // (D+C: the 2513 char ROM, TTL and most of the section) so it
+            // clears RAM-X; dropping there still seats the whole video group.
+            let frames = chips.filter { $0.group == .video && $0.frame.minY < 300 }
+                .map(\.frame)
+            return (frames.dropFirst().reduce(frames.first ?? .zero) { $0.union($1) })
+                .insetBy(dx: -10, dy: -10)
+        case .proms: return CGRect(x: col(1) - 22, y: 468, width: 96, height: 62)
+        case .pia: return CGRect(x: col(4) - 80, y: 470, width: 160, height: 60)
+        case .cpu: return CGRect(x: col(7) - 80, y: 470, width: 160, height: 60)
+        case .ramX: return CGRect(x: col(11) - 26, y: 330, width: 420, height: 66)
+        case .ramW: return CGRect(x: col(11) - 26, y: 462, width: 420, height: 68)
         }
     }
 
@@ -762,11 +773,15 @@ struct BoardView: View {
                             controller.place(group) // empty spot: reseat
                         }
                         .dropDestination(for: String.self) { items, _ in
+                            controller.draggingPayload = nil
                             guard items.first == group.payload else { return false }
                             controller.place(group)
                             return true
                         } isTargeted: { over in
-                            targetedZone = over ? group : (targetedZone == group ? nil : targetedZone)
+                            // Light up only for THIS part — not for any drag.
+                            let match = controller.draggingPayload == group.payload
+                            targetedZone = (over && match) ? group
+                                : (targetedZone == group ? nil : targetedZone)
                         }
                         .position(x: rect.midX, y: rect.midY)
                 }
@@ -810,11 +825,15 @@ struct BoardView: View {
                             radius: 6)
                     .brightness(hoveredPort == port.id ? 0.06 : 0)
                     .dropDestination(for: String.self) { items, _ in
+                        controller.draggingPayload = nil
                         guard items.first == port.id.rawValue else { return false }
                         controller.connect(port.id)
                         return true
                     } isTargeted: { over in
-                        targetedPort = over ? port.id : (targetedPort == port.id ? nil : targetedPort)
+                        // Light up only for THIS peripheral — not for any drag.
+                        let match = controller.draggingPayload == port.id.rawValue
+                        targetedPort = (over && match) ? port.id
+                            : (targetedPort == port.id ? nil : targetedPort)
                     }
                     .onTapGesture(count: 2) {
                         controller.toggle(port.id)

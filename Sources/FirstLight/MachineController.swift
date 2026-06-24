@@ -1009,6 +1009,13 @@ final class MachineController {
         displayRevision += 1
     }
 
+    // MARK: Drag-and-drop
+
+    /// The payload of the shelf part currently being dragged (a chip group's
+    /// `payload` or a peripheral's `rawValue`). Set at drag start so a drop
+    /// zone can light up ONLY for the matching part instead of for any drag.
+    @ObservationIgnored var draggingPayload: String?
+
     // MARK: Tape recording (P1)
 
     var recordRequested = false
