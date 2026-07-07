@@ -554,8 +554,11 @@ final class MachineController {
             update(.pia, Double(activity.pia) / 60)
             update(.video, Double(videoChars))
             // Crash heuristic: ROM/BASIC live at $E000+, so a quiet CPU
-            // below that is running garbage, not waiting for input.
-            if !ranLoadedProgram && machine.pc < 0xE000 && videoChars == 0 {
+            // below that is running garbage, not waiting for input. An
+            // in-flight tape load is exempt: the authentic path spends the
+            // whole tape silently inside the ACI ROM at $C100.
+            if nowLoading == nil && !ranLoadedProgram
+                && machine.pc < 0xE000 && videoChars == 0 {
                 silentLowFrames += 1
                 if silentLowFrames == 121 { looksCrashed = true }
             } else {
