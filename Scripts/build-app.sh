@@ -1,24 +1,36 @@
 #!/bin/zsh
 # Builds First Light.app from the SwiftPM FirstLight executable.
 # Output: dist/First Light.app
-# Usage: Scripts/build-app.sh [--clean] [--install]
+# Usage: Scripts/build-app.sh [--clean] [--install] [--release]
 #   --clean    rm -rf .build first — forces a full rebuild. Use before a
 #              release or if a run shows stale behavior: SwiftPM's incremental
 #              build can occasionally serve a stale binary (seen after a branch
 #              switch + large edit batch).
 #   --install  also copy the finished bundle to /Applications
+#   --release  sign for distribution (hardened runtime), notarize, staple,
+#              and zip → dist/First-Light-<version>.zip. Requires:
+#                CODESIGN_ID     "Developer ID Application: …" identity
+#                NOTARY_PROFILE  a `xcrun notarytool store-credentials` profile
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CLEAN=0
 INSTALL=0
+RELEASE=0
 for arg in "$@"; do
     case "$arg" in
         --clean)   CLEAN=1 ;;
         --install) INSTALL=1 ;;
-        *) echo "unknown option: $arg (use --clean and/or --install)" >&2; exit 2 ;;
+        --release) RELEASE=1 ;;
+        *) echo "unknown option: $arg (use --clean, --install and/or --release)" >&2; exit 2 ;;
     esac
 done
+
+if (( RELEASE )) && { [[ -z "${CODESIGN_ID:-}" ]] || [[ -z "${NOTARY_PROFILE:-}" ]] }; then
+    echo "--release needs CODESIGN_ID (Developer ID Application identity) and" >&2
+    echo "NOTARY_PROFILE (from: xcrun notarytool store-credentials)" >&2
+    exit 2
+fi
 
 if (( CLEAN )); then
     echo "clean build: removing .build…"
@@ -75,13 +87,31 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --deep --sign "${CODESIGN_ID:--}" "$APP"
+if (( RELEASE )); then
+    # Distribution: hardened runtime + secure timestamp, then notarize.
+    # No entitlements needed — no JIT, mic, or network.
+    codesign --force --options runtime --timestamp --sign "$CODESIGN_ID" "$APP"
+else
+    codesign --force --deep --sign "${CODESIGN_ID:--}" "$APP"
+fi
 # Nudge Finder/Dock to drop any cached (pre-icon) artwork for the bundle
 touch "$APP" "$APP/Contents/Info.plist"
 # Stamp the Finder icon directly (bypasses LaunchServices caching)
 swift Tools/seticon.swift dist/AppIcon.iconset/icon_512x512@2x.png "$APP" || true
 echo "built $APP"
 echo "(icon stale? run: killall Dock Finder)"
+
+if (( RELEASE )); then
+    ZIP="dist/First-Light-$VERSION.zip"
+    # Submit a zip for notarization, staple the ticket to the app, then
+    # re-zip — the stapled bundle is what users must receive.
+    ditto -c -k --keepParent "$APP" "$ZIP"
+    xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$APP"
+    rm -f "$ZIP"
+    ditto -c -k --keepParent "$APP" "$ZIP"
+    spctl -a -vv "$APP" && echo "notarized + stapled: $ZIP"
+fi
 
 if (( INSTALL )); then
     rm -rf "/Applications/First Light.app"
