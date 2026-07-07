@@ -66,10 +66,10 @@ enum TapeLibrary {
              blurb: "Conway's Game of Life, breeding on a 1976 screen — "
              + "emergence at 60 characters a second."),
         Tape(name: "Blackjack",
-             kind: .basicImage(file: "blackjack", load: 0x0800),
-             blurb: "Hit or stand — the dealer lives in 2 KB. Published "
-             + "as a bare memory image; we rebuild BASIC's pointers "
-             + "around it."),
+             kind: .basicImage(file: "blackjack", load: 0x0A06),
+             blurb: "Hit or stand — recovered from an original 1976 tape "
+             + "in 2005. A bare memory image; we rebuild BASIC's "
+             + "pointers around it."),
 
         // — Homebrew: written for real Apple-1s, this century —
         Tape(name: "15 Puzzle",

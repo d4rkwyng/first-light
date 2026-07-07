@@ -172,14 +172,15 @@ func runUntil(_ machine: Apple1, contains needle: String,
                 "BASIC prompt should appear after the authentic tape read")
     }
 
-    @Test func pokedHimemGivesBigListingsRoom() throws {
-        // Apple-1 Integer BASIC's cold start hardcodes HIMEM=$1000 (mem_init_4k
-        // at $EFD3) — under 2 KB for program + variables, which the larger
-        // cassette listings overflow with *** MEM FULL ERR. This ROM has NO
-        // HIMEM: statement (that's an Apple II addition), so the load paths
-        // poke the HIMEM pointer ($4C/$4D) up to $2000 — the 8 KB board the
-        // library needed. Confirm the cold-start cap, then that the poke lets a
-        // listing well past 2 KB fit.
+    @Test func pokedLomemGivesBigListingsRoom() throws {
+        // Apple-1 Integer BASIC's cold start sets LOMEM=$0800 HIMEM=$1000
+        // (mem_init_4k at $EFD3) — 2 KB for program + variables, which the
+        // larger cassette listings overflow with *** MEM FULL ERR. HIMEM
+        // must NOT be raised: $1000-$1FFF is open bus on this machine (bank
+        // X holds BASIC at $E000), so a program stored "up there" silently
+        // vanishes byte by byte. The period fix goes the other way: poke
+        // LOMEM ($4A/$4B) down to $0300, reclaiming free real RAM. Confirm
+        // the cold-start values, then that a ~3 KB listing fits AND RUNS.
         let m = try Apple1()
         m.displayCyclesPerChar = 0
         m.load(try ROM.integerBASIC(), at: 0xE000)
@@ -187,14 +188,21 @@ func runUntil(_ machine: Apple1, contains needle: String,
         m.run(cycles: 6_000_000) // cold start
         #expect(Int(m.peek(0x4C)) | (Int(m.peek(0x4D)) << 8) == 0x1000,
                 "cold start should cap HIMEM at $1000")
-        m.load([0x00, 0x20], at: 0x4C) // poke HIMEM := $2000
+        #expect(Int(m.peek(0x4A)) | (Int(m.peek(0x4B)) << 8) == 0x0800,
+                "cold start should set LOMEM to $0800")
+        m.load([0x00, 0x03], at: 0x4A) // poke LOMEM := $0300
+        m.load([0x00, 0x03], at: 0xCC) // PV := LOMEM
         var listing = ""
-        for n in stride(from: 100, through: 990, by: 10) { // 90 lines, ~4 KB
+        for n in stride(from: 100, through: 750, by: 10) { // 66 lines, ~3 KB
             listing += "\(n) PRINT \"FIFTY YEARS OF APPLE COMPUTER COMPANY\"\n"
         }
-        m.type(listing)
-        m.run(cycles: 120_000_000)
+        m.type(listing + "760 PRINT \"DONE\"\n770 END\nRUN\n")
+        m.run(cycles: 200_000_000)
         #expect(!m.terminal.transcript.contains("MEM FULL"),
-                "with HIMEM poked to $2000 a ~4 KB listing should fit")
+                "with LOMEM poked to $0300 a ~3 KB listing should fit")
+        // A poke into open bus would pass the MEM FULL check while silently
+        // losing the program — the bug this test used to hide. RUN proves it.
+        #expect(m.terminal.transcript.contains("DONE"),
+                "the stored program must actually RUN")
     }
 }

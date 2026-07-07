@@ -142,9 +142,10 @@ final class MachineController {
 
     /// Authentic load speed: the real ACI bus load — type C100R + the range,
     /// the bit-true FSK plays in real time (~30 s for BASIC) while the bytes
-    /// arrive off the bus, then run. The DEFAULT, because it's how people
-    /// actually experienced it. Turn it off (Cassettes menu) for a quick load.
-    var authenticLoads = true
+    /// arrive off the bus, then run. OFF by default — a first tape shouldn't
+    /// cost a stranger 30 seconds; the purists turn it on (Cassettes menu)
+    /// to feel 1976 for real.
+    var authenticLoads = false
 
     /// Cassette loading theater: name of the tape in the deck, or nil.
     private(set) var nowLoading: String?
@@ -635,6 +636,11 @@ final class MachineController {
     }
 
     /// Feed keystrokes as if a patient demonstrator were typing them.
+    /// Test hook: feed one autotyped key, the way tick() does at frame%3.
+    func pumpAutoTypeForTesting() {
+        if !autoTypeQueue.isEmpty { machine.press(autoTypeQueue.removeFirst()) }
+    }
+
     func autoType(_ text: String) {
         for ch in text.uppercased().unicodeScalars where ch.isASCII {
             autoTypeQueue.append(ch == "\n" ? 0x0D : UInt8(ch.value))
@@ -868,34 +874,43 @@ final class MachineController {
             loadBASIC()
         case .basicSource(let file):
             guard let source = TapeLibrary.basicSource(file) else { return }
-            loadBASIC() // queues E000R; the cold start hardcodes HIMEM=$1000
+            loadBASIC() // queues E000R; the cold start sets LOMEM=$0800 HIMEM=$1000
             machine.displayCyclesPerChar = 0
-            machine.run(cycles: 6_000_000) // let the cold start set HIMEM=$1000
-            // This ROM has no HIMEM: statement, so poke the pointer ($4C/$4D)
-            // up to $2000 — the 8 KB board these listings were written for —
-            // or they hit *** MEM FULL ERR partway in.
-            machine.load([0x00, 0x20], at: 0x4C) // HIMEM := $2000
+            machine.run(cycles: 6_000_000) // let the cold start run
+            // Cold start leaves 2 KB ($0800-$1000) for program + variables —
+            // the big listings overflow it with *** MEM FULL ERR. HIMEM must
+            // STAY $1000 (there is no RAM above it — bank X holds BASIC at
+            // $E000; $1000-$1FFF is open bus and writes vanish). The period
+            // fix was the other direction: poke LOMEM ($4A/$4B) down to $0300,
+            // reclaiming the free $0300-$07FF for 3.25 KB of real space.
+            machine.load([0x00, 0x03], at: 0x4A) // LOMEM := $0300
+            machine.load([0x00, 0x03], at: 0xCC) // PV := LOMEM (no vars yet)
             machine.type(source + "\n") // TurboType the listing in
             machine.run(cycles: 80_000_000)
             machine.displayCyclesPerChar = Apple1.cyclesPerFrame
             autoType("RUN\n")
         case .basicImage(let file, let load):
             guard let image = TapeLibrary.binary(file) else { return }
-            loadBASIC() // cold boot gives a sane zero page
+            // Cold-start BASIC first: E2B3 warm entry over a raw zero page
+            // wedges the interpreter (its state block $4A-$FF is garbage),
+            // and a cold start also clears whatever a previous tape left —
+            // stale state was the "MEM FULL after another load" bug.
+            loadBASIC()
             machine.displayCyclesPerChar = 0
-            machine.run(cycles: 6_000_000)
+            machine.run(cycles: 6_000_000) // let the cold start finish
             machine.displayCyclesPerChar = Apple1.cyclesPerFrame
             machine.load(image, at: load)
-            // Rebuild Integer BASIC's REAL zero-page pointers — the $4A–$FF
-            // block a genuine program tape carried. LOMEM/HIMEM frame the 8 KB
-            // board; PP/PV mark the end of the loaded program so its variables
-            // have somewhere to live (the old $CA/$E4/$E6 scheme was wrong for
-            // this ROM, and left zero headroom -> MEM FULL on the first RUN).
-            let end = load &+ UInt16(truncatingIfNeeded: image.count)
-            machine.load([UInt8(load & 0xFF), UInt8(load >> 8)], at: 0x4A) // LOMEM
-            machine.load([0x00, 0x20], at: 0x4C)                          // HIMEM=$2000
-            machine.load([UInt8(end & 0xFF), UInt8(end >> 8)], at: 0xCA)  // PP = end
-            machine.load([UInt8(end & 0xFF), UInt8(end >> 8)], at: 0xCC)  // PV = end
+            // Point the program pointers ($CA/$E4/$E6) at the image — it
+            // sits [load, $1000), against HIMEM like a real session — and
+            // give variables the free RAM below it: cold-start LOMEM=$0800
+            // is inside the program, so vars collided on first allocation
+            // (*** MEM FULL ERR mid-hand). $0300-$07FF is the period fix.
+            let pointer = [UInt8(load & 0xFF), UInt8(load >> 8)]
+            machine.load(pointer, at: 0x00CA)
+            machine.load(pointer, at: 0x00E4)
+            machine.load(pointer, at: 0x00E6)
+            machine.load([0x00, 0x03], at: 0x004A) // LOMEM := $0300
+            machine.load([0x00, 0x03], at: 0x00CC) // PV := LOMEM
             autoType("RUN\n")
         case .binary(let file, let load, let run):
             guard let bytes = TapeLibrary.binary(file) else { return }
