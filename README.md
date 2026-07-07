@@ -19,6 +19,14 @@ homebrew — all machine-verified by `Scripts/verify-tapes.sh`. ⌘K opens
 a command palette that types 1976 syntax for you; ⌘/ is the quick
 reference; ⌘F is full-screen phosphor. See [docs/PLAN.md](docs/PLAN.md).
 
+![The bench: board, monitor, keyboard, and cassette deck](docs/screenshots/bench.png)
+
+## Install
+
+Download the latest notarized build from
+[Releases](https://github.com/d4rkwyng/first-light/releases) — or build it
+yourself below. Requires macOS 15.
+
 ## Build & test
 
 Works with Command Line Tools only (no Xcode required):
@@ -35,6 +43,10 @@ BASIC into RAM and starts it, ⌘R resets. Esc cancels a monitor line;
 Delete sends `_`, the Apple-1's rubout.
 
 ## Credits & legal
+
+First Light's own code is [MIT](LICENSE). Bundled historical material has
+its own owners and terms — the full provenance record is in
+[NOTICE.md](NOTICE.md). The short version:
 
 - 6502 core: [fake6502](http://rubbermallet.org/fake6502.c) v1.1 by Mike
   Chambers (public domain).

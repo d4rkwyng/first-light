@@ -1,5 +1,9 @@
 # First Light — an Apple-1 for Apple's 50th
 
+> This is the project's working design document — the plan the app was built
+> against, kept as-is for the engineering history. For what the app *is*,
+> see the [README](../README.md).
+
 A native Mac app (Swift/SwiftUI, Metal later) that shows a living Apple-1:
 the board with every chip visible and explained, a CRT next to it, peripherals
 you drag onto the machine, and guided demos of what $666.66 bought in 1976.
@@ -162,17 +166,15 @@ F8. **Automated placement audit.** Finish Tools/audit (replicate the
    1976 story layer, free-play mode.
 7. **Later.** iPad target (needs Xcode), visionOS life-size board.
 
-## Software/ binaries (from alexander-akhmetov/apple1 repo)
-
-apple30.bin, lunar.bin, life.bin, ASMmchess.bin — load addresses TBD
-(check that repo's loader). Not yet bundled.
-
 ## Legal notes
+
+(Resolved for release — see NOTICE.md at the repo root for the full
+provenance record. Historical notes kept below.)
 
 - fake6502: public domain (credit Mike Chambers).
 - Woz Monitor + Integer BASIC: still Apple copyrights; tolerated and bundled
   by virtually all open-source Apple-1 emulators for decades. Bundled here
-  too; revisit before any public release.
+  too, with a provenance NOTICE and a takedown-compliance statement.
 - The corrupted circulating BASIC dump ($F2/$12 at two bytes) breaks input —
   we ship the verified-good dump (cross-checked against napple1).
 - 2513 font: render from datasheet bitmaps (not copyrightable glyph data).
@@ -181,7 +183,6 @@ apple30.bin, lunar.bin, life.bin, ASMmchess.bin — load addresses TBD
 
 - Tests: `./Scripts/test.sh` (adds Testing.framework paths for CLT)
 - App: `./Scripts/build-app.sh [--install]` → `dist/First Light.app`
-- DO NOT create a GitHub repo / push until mostly done (owner's request).
 
 ## Next 10 (planned 2026-06-10, post F1-F8)
 
@@ -308,6 +309,7 @@ swallow keystrokes (`ensure6502()` at every run/load entry + a shared
 warning is gone. Plus a cleanup sweep (dead views/methods, a duplicate info-bar
 block, historical fact corrections). Deferred backlog: FirstLight/6800 test
 coverage, `CRT.metallib` build regeneration, the `Apple1.current` global, the
-unbounded transcript, accessibility. Still open: the Apple-ROM legal gate before
-any public release (bundled Woz Monitor + Integer BASIC are Apple copyrights;
-safest path is ship-without-ROMs or ship-source-and-assemble + a provenance NOTICE).
+unbounded transcript, accessibility. The Apple-ROM legal gate was resolved for
+release (2026-07): ROMs stay bundled with a provenance NOTICE.md and a
+takedown-compliance statement; the app icon and in-app mark were replaced with
+original artwork (the six-stripe boot prompt); MIT LICENSE added for our code.

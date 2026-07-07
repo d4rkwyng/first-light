@@ -55,7 +55,7 @@ struct GalleryView: View {
         VStack(spacing: 12) {
             HStack {
                 HStack(spacing: 10) {
-                    RainbowApple().frame(width: 18, height: 21)
+                    RainbowPrompt().frame(width: 24, height: 17)
                     Text("The Real Apple-1")
                 }
                     .font(.system(size: 18, weight: .bold, design: .serif))

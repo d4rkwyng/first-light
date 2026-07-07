@@ -1,10 +1,23 @@
-// Renders the app icon: PCB-green squircle, faint traces, gold edge
-// fingers, and the 1977 six-stripe apple. Emits an .iconset + .icns.
+// Renders the app icon: PCB-green squircle with faint traces and gold edge
+// fingers, a dark CRT inset, and the Woz Monitor's boot prompt (backslash +
+// block cursor) filled with the 1977 six-stripe palette. The prompt glyph is
+// original artwork — the palette evokes the era without using Apple's marks.
+// Emits an .iconset + the PNGs build-app.sh stamps on the bundle.
 import AppKit
 
 let sizes = [16, 32, 64, 128, 256, 512, 1024]
 let out = "dist/AppIcon.iconset"
 try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
+
+// The 1977 palette, top→bottom: green, yellow, orange, red, purple, blue
+let stripes: [NSColor] = [
+    NSColor(red: 0.38, green: 0.73, blue: 0.27, alpha: 1),
+    NSColor(red: 0.99, green: 0.78, blue: 0.05, alpha: 1),
+    NSColor(red: 0.96, green: 0.51, blue: 0.12, alpha: 1),
+    NSColor(red: 0.89, green: 0.16, blue: 0.12, alpha: 1),
+    NSColor(red: 0.58, green: 0.22, blue: 0.56, alpha: 1),
+    NSColor(red: 0.00, green: 0.56, blue: 0.84, alpha: 1),
+]
 
 func draw(_ px: Int) -> NSImage {
     let size = CGFloat(px)
@@ -15,8 +28,7 @@ func draw(_ px: Int) -> NSImage {
     // macOS icon grid: content inset ~10%
     let inset = size * 0.09
     let rect = CGRect(x: inset, y: inset, width: size - 2 * inset, height: size - 2 * inset)
-    let squircle = NSBezierPath(roundedRect: rect, xRadius: size * 0.2, yRadius: size * 0.2)
-    squircle.addClip()
+    NSBezierPath(roundedRect: rect, xRadius: size * 0.2, yRadius: size * 0.2).addClip()
 
     // PCB substrate
     let grad = NSGradient(colors: [NSColor(red: 0.21, green: 0.33, blue: 0.24, alpha: 1),
@@ -42,30 +54,57 @@ func draw(_ px: Int) -> NSImage {
         ctx.fill(CGRect(x: x, y: rect.minY, width: fw, height: rect.height * 0.07))
     }
 
-    // six-stripe apple
-    if let symbol = NSImage(systemSymbolName: "applelogo", accessibilityDescription: nil) {
-        let config = NSImage.SymbolConfiguration(pointSize: size * 0.5, weight: .regular)
-        let glyph = symbol.withSymbolConfiguration(config)!
-        let gsize = glyph.size
-        let scale = (rect.height * 0.58) / gsize.height
-        let w = gsize.width * scale, h = gsize.height * scale
-        let gx = rect.midX - w / 2, gy = rect.midY - h / 2 + rect.height * 0.02
-        let stripes: [NSColor] = [
-            NSColor(red: 0.00, green: 0.56, blue: 0.84, alpha: 1),
-            NSColor(red: 0.58, green: 0.22, blue: 0.56, alpha: 1),
-            NSColor(red: 0.89, green: 0.16, blue: 0.12, alpha: 1),
-            NSColor(red: 0.96, green: 0.51, blue: 0.12, alpha: 1),
-            NSColor(red: 0.99, green: 0.78, blue: 0.05, alpha: 1),
-            NSColor(red: 0.38, green: 0.73, blue: 0.27, alpha: 1),
-        ] // bottom→top
+    // dark CRT glass inset
+    let glass = rect.insetBy(dx: rect.width * 0.14, dy: rect.height * 0.17)
+    ctx.setFillColor(NSColor(white: 0.04, alpha: 1).cgColor)
+    NSBezierPath(roundedRect: glass.insetBy(dx: -size * 0.018, dy: -size * 0.018),
+                 xRadius: size * 0.08, yRadius: size * 0.08).fill()
+    NSColor(red: 0.02, green: 0.05, blue: 0.03, alpha: 1).setFill()
+    NSBezierPath(roundedRect: glass, xRadius: size * 0.07, yRadius: size * 0.07).fill()
+
+    // the boot prompt + cursor, striped
+    let font = NSFont.monospacedSystemFont(ofSize: size * 0.36, weight: .bold)
+    let s = NSAttributedString(string: "\\\u{2588}",
+                               attributes: [.font: font, .foregroundColor: NSColor.white])
+    let ts = s.size()
+    let at = CGPoint(x: glass.midX - ts.width / 2, y: glass.midY - ts.height / 2)
+    let glyphImg = NSImage(size: NSSize(width: ts.width + 2, height: ts.height + 2))
+    glyphImg.lockFocus()
+    s.draw(at: CGPoint(x: 1, y: 1))
+    glyphImg.unlockFocus()
+    let mask = glyphImg.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+    let glyphRect = CGRect(x: at.x - 1, y: at.y - 1, width: ts.width + 2, height: ts.height + 2)
+    // soft phosphor bloom behind the glyph
+    ctx.saveGState()
+    ctx.setShadow(offset: .zero, blur: size * 0.05,
+                  color: NSColor(white: 1, alpha: 0.55).cgColor)
+    ctx.draw(mask, in: glyphRect)
+    ctx.restoreGState()
+    // six stripes through the glyph (CG is y-up, so reversed keeps green on top)
+    ctx.saveGState()
+    ctx.clip(to: glyphRect, mask: mask)
+    let band = glyphRect.height / 6
+    for (i, color) in stripes.reversed().enumerated() {
+        ctx.setFillColor(color.cgColor)
+        ctx.fill(CGRect(x: glyphRect.minX, y: glyphRect.minY + CGFloat(i) * band,
+                        width: glyphRect.width, height: band))
+    }
+    ctx.restoreGState()
+
+    // scanlines + glass glare over everything on the tube (skip at tiny sizes)
+    if px >= 64 {
         ctx.saveGState()
-        let glyphRect = CGRect(x: gx, y: gy, width: w, height: h)
-        ctx.clip(to: glyphRect, mask: glyph.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
-        let band = h / 6
-        for (i, color) in stripes.enumerated() {
-            ctx.setFillColor(color.cgColor)
-            ctx.fill(CGRect(x: gx, y: gy + CGFloat(i) * band, width: w, height: band))
+        NSBezierPath(roundedRect: glass, xRadius: size * 0.07, yRadius: size * 0.07).addClip()
+        ctx.setFillColor(NSColor(white: 0, alpha: 0.22).cgColor)
+        var y = glass.minY
+        while y < glass.maxY {
+            ctx.fill(CGRect(x: glass.minX, y: y, width: glass.width, height: size * 0.005))
+            y += size * 0.016
         }
+        let hl = NSGradient(colors: [NSColor(white: 1, alpha: 0.10),
+                                     NSColor(white: 1, alpha: 0)])!
+        hl.draw(in: CGRect(x: glass.minX, y: glass.midY,
+                           width: glass.width, height: glass.height / 2), angle: -70)
         ctx.restoreGState()
     }
     image.unlockFocus()
