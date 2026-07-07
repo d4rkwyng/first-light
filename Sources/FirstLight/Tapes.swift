@@ -44,6 +44,11 @@ enum TapeLibrary {
         Tape(name: "Mastermind",
              kind: .binary(file: "mastermind", load: 0x0300, run: "0300R"),
              blurb: "Guess the computer's 5-digit code in the fewest tries."),
+        Tape(name: "Blackjack",
+             kind: .basicImage(file: "blackjack", load: 0x0A06),
+             blurb: "Hit or stand — recovered from an original 1976 tape "
+             + "in 2005. A bare memory image; we rebuild BASIC's "
+             + "pointers around it."),
         Tape(name: "Dis-Assembler",
              kind: .binary(file: "dis-assembler", load: 0x0800, run: "800R"),
              blurb: "Turn memory back into 6502 assembly — the era's "
@@ -52,10 +57,6 @@ enum TapeLibrary {
              kind: .binary(file: "extended-monitor", load: 0xE000, run: "E003R"),
              blurb: "The Woz Monitor's big sibling: search, move, and "
              + "edit memory. Needs RAM bank X."),
-        Tape(name: "APPLE 50TH",
-             kind: .basicSource(file: "apple50th"),
-             blurb: "Our anniversary tape: fifty years of Apple, told by "
-             + "the machine that started it — at 60 characters a second."),
         Tape(name: "Microchess",
              kind: .binary(file: "microchess", load: 0x0300, run: "300R"),
              blurb: "Peter Jennings' 1976 chess engine — the first "
@@ -65,11 +66,6 @@ enum TapeLibrary {
              kind: .binary(file: "life", load: 0x0280, run: "400R"),
              blurb: "Conway's Game of Life, breeding on a 1976 screen — "
              + "emergence at 60 characters a second."),
-        Tape(name: "Blackjack",
-             kind: .basicImage(file: "blackjack", load: 0x0A06),
-             blurb: "Hit or stand — recovered from an original 1976 tape "
-             + "in 2005. A bare memory image; we rebuild BASIC's "
-             + "pointers around it."),
 
         // — Homebrew: written for real Apple-1s, this century —
         Tape(name: "15 Puzzle",
@@ -85,6 +81,11 @@ enum TapeLibrary {
              blurb: "Dave Schmenk's 30th-anniversary graphics demo — an "
              + "undocumented display trick. Squint from across the room.",
              homebrew: true),
+        Tape(name: "APPLE 50TH",
+             kind: .basicSource(file: "apple50th"),
+             blurb: "This project's own anniversary tape, 2026: fifty "
+             + "years of Apple, told by the machine that started it — "
+             + "at 60 characters a second.", homebrew: true),
         Tape(name: "Mandelbrot 65",
              kind: .binary(file: "mandelbrot-65", load: 0x0280, run: "280R"),
              blurb: "A fractal, rendered in ASCII by a 1 MHz 6502. Give "
