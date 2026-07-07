@@ -674,8 +674,11 @@ struct WorkbenchBackground: View {
     }
 }
 
-/// The 1977 six-stripe apple, drawn in SwiftUI.
-struct RainbowApple: View {
+/// The app's mark: the Woz Monitor's boot prompt (backslash + block cursor)
+/// filled with the 1977 six-stripe palette. The glyph is ours — the machine's
+/// actual first words — and the stripes say the era without borrowing
+/// anyone's trademark. Matches the app icon (Tools/makeicon.swift).
+struct RainbowPrompt: View {
     static let stripes: [Color] = [
         Color(red: 0.38, green: 0.73, blue: 0.27),  // green
         Color(red: 0.99, green: 0.78, blue: 0.05),  // yellow
@@ -686,16 +689,21 @@ struct RainbowApple: View {
     ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(0..<6, id: \.self) { i in
-                Rectangle().fill(Self.stripes[i])
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                ForEach(0..<6, id: \.self) { i in
+                    Rectangle().fill(Self.stripes[i])
+                }
             }
+            .mask(
+                Text("\\\u{2588}")
+                    .font(.system(size: geo.size.height * 0.9,
+                                  weight: .bold, design: .monospaced))
+                    .minimumScaleFactor(0.3)
+                    .frame(width: geo.size.width, height: geo.size.height)
+            )
+            .shadow(color: .white.opacity(0.35), radius: geo.size.height * 0.08)
         }
-        .mask(
-            Image(systemName: "applelogo")
-                .resizable()
-                .scaledToFit()
-        )
     }
 }
 
@@ -711,8 +719,8 @@ struct WelcomeCard: View {
             // a dark room, the bench barely visible beneath
             Color.black.opacity(0.88)
             VStack(spacing: 18) {
-                RainbowApple()
-                    .frame(width: 56, height: 64)
+                RainbowPrompt()
+                    .frame(width: 72, height: 52)
                     .padding(.bottom, 2)
                 Text("It's 1976.")
                     .font(.system(size: 40, weight: .bold, design: .serif))
@@ -749,6 +757,10 @@ struct WelcomeCard: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.6))
+                Text("An unofficial tribute. Not affiliated with Apple Inc.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .padding(.top, 10)
             }
             .padding(44)
             .foregroundStyle(.white)
