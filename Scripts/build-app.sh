@@ -90,6 +90,10 @@ if (( INSTALL )); then
     # same bundle id, so leaving it registered makes a duplicate app appear.
     LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
     "$LSREG" -f "/Applications/First Light.app" 2>/dev/null || true
-    "$LSREG" -u "$APP" 2>/dev/null || true
+    # Delete the dist copy outright. Leaving a launchable bundle under the home
+    # dir lets Spotlight/LaunchServices auto-re-register it, so a plain `-u`
+    # never holds and Launchpad shows a duplicate. /Applications is the one copy.
+    "$LSREG" -u "$PWD/$APP" 2>/dev/null || true
+    rm -rf "$APP"
     echo "installed to /Applications/First Light.app"
 fi

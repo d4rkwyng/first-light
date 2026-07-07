@@ -196,13 +196,20 @@ final class MachineController {
         tapeCounter += 47
         sound.transportWhirr()
     }
-    private var loadFinishFrame = 0
+    private var loadTotalFrames = 1   // deck duration in frames at 1× speed
+    private var loadFramesLeft = 0    // counts down by `loadSpeed` each tick
     private var pendingLoad: (() -> Void)?
     var loadProgress: Double {
         guard nowLoading != nil else { return 0 }
-        let span = max(1, loadFinishFrame - loadStartFrame)
-        return max(0, min(1, Double(pulseFrame - loadStartFrame) / Double(span)))
+        return max(0, min(1, 1 - Double(loadFramesLeft) / Double(max(1, loadTotalFrames))))
     }
+
+    /// Frames an in-flight load advances per tick — and how fast the CPU runs
+    /// WHILE it loads, so the authentic ACI bus read (which decodes the FSK in
+    /// CPU cycles) stays in lock-step with the deck timer. Recomputed every
+    /// frame: cranking CPU Speed, or dropping the real-time toggle, speeds the
+    /// load that's already running up, not just the next one.
+    var loadSpeed: Int { authenticLoads ? max(1, turboFactor) : max(12, turboFactor) }
 
     /// Stage a cassette: machine assembles, the deck spins for ~3 s with
     /// the FSK warble, then `action` performs the actual load.
@@ -226,7 +233,8 @@ final class MachineController {
         // after ~30 s). MUST match the audio's 6 s — it's the same signal.
         machine.armTape(bytes: bytes, leaderSeconds: 6.0)
         let duration = sound.tapePlay(bytes: bytes, authentic: true)
-        loadFinishFrame = frame + Int(duration * 60)
+        loadTotalFrames = max(1, Int(duration * 60))
+        loadFramesLeft = loadTotalFrames
         pendingLoad = nil
         afterTapeCommand = run
         autoType(String(format: "C100R\n%X.%XR\n",
@@ -247,10 +255,28 @@ final class MachineController {
         // T1: the deck plays the tape's REAL waveform — the duration is
         // however long those bytes take at the ACI's actual bit rate
         let duration = sound.tapePlay(bytes: bytes, authentic: authenticLoads)
-        loadFinishFrame = frame + (authenticLoads
-            ? Int(duration * 60)
-            : 170)
+        loadTotalFrames = authenticLoads ? max(1, Int(duration * 60)) : 170
+        loadFramesLeft = loadTotalFrames
         pendingLoad = action
+    }
+
+    /// Advance an in-flight cassette load at the current `loadSpeed`, firing
+    /// the deposit (or the authentic RUN command) the frame it completes.
+    /// Pulled out of tick() so a mid-load speed change lands next frame.
+    func advanceLoad() {
+        guard nowLoading != nil else { return }
+        loadFramesLeft -= loadSpeed
+        if frame % 6 == 0 { tapeCounter += 1 } // the deck's mechanical counter
+        guard loadFramesLeft <= 0 else { return }
+        nowLoading = nil
+        sound.tapeStop()
+        let action = pendingLoad
+        pendingLoad = nil
+        action?()
+        if let run = afterTapeCommand {
+            afterTapeCommand = nil
+            autoType(run + "\n")
+        }
     }
     /// True while the screen lives in its own (monitor-styled) window.
     var screenDetached = false
@@ -500,7 +526,11 @@ final class MachineController {
             if !autoTypeQueue.isEmpty, frame % 3 == 0 {
                 machine.press(autoTypeQueue.removeFirst())
             }
-            machine.run(cycles: Apple1.cyclesPerFrame * turboFactor)
+            // While a tape loads, the CPU runs at the same rate the deck timer
+            // advances (loadSpeed), so the authentic ACI read finishes exactly
+            // as the timer does — cranking speed mid-load stays coherent.
+            machine.run(cycles: Apple1.cyclesPerFrame
+                        * (nowLoading != nil ? loadSpeed : turboFactor))
             let activity = machine.takeActivity()
             // The CPU is always fetching; everything else fades unless the
             // bus actually touched it this frame.
@@ -524,20 +554,9 @@ final class MachineController {
         }
         // The cursor blink comes from the terminal hardware — it keeps
         // blinking even with the CPU pulled, and dies with the video set.
-        if nowLoading != nil, frame % 6 == 0 { tapeCounter += 1 }
+        advanceLoad()
         sound.flybackSet(flybackWhine && powered && monitorOn
                          && connected.contains(.display))
-        if nowLoading != nil, frame >= loadFinishFrame {
-            nowLoading = nil
-            sound.tapeStop()
-            let action = pendingLoad
-            pendingLoad = nil
-            action?()
-            if let run = afterTapeCommand {
-                afterTapeCommand = nil
-                autoType(run + "\n")
-            }
-        }
 
         // A detuned V-HOLD or a warming tube needs continuous redraws
         if abs(vHold) > 0.08 || (powered && crtEffects && crtWarmth < 1) {
@@ -849,10 +868,14 @@ final class MachineController {
             loadBASIC()
         case .basicSource(let file):
             guard let source = TapeLibrary.basicSource(file) else { return }
-            loadBASIC()
-            // TurboType: feed and crunch the listing at tape speed
+            loadBASIC() // queues E000R; the cold start hardcodes HIMEM=$1000
             machine.displayCyclesPerChar = 0
-            machine.type(source + "\n")
+            machine.run(cycles: 6_000_000) // let the cold start set HIMEM=$1000
+            // This ROM has no HIMEM: statement, so poke the pointer ($4C/$4D)
+            // up to $2000 — the 8 KB board these listings were written for —
+            // or they hit *** MEM FULL ERR partway in.
+            machine.load([0x00, 0x20], at: 0x4C) // HIMEM := $2000
+            machine.type(source + "\n") // TurboType the listing in
             machine.run(cycles: 80_000_000)
             machine.displayCyclesPerChar = Apple1.cyclesPerFrame
             autoType("RUN\n")
@@ -863,12 +886,17 @@ final class MachineController {
             machine.run(cycles: 6_000_000)
             machine.displayCyclesPerChar = Apple1.cyclesPerFrame
             machine.load(image, at: load)
-            // point BASIC's program pointers at the image
-            let pointer = [UInt8(load & 0xFF), UInt8(load >> 8)]
-            machine.load(pointer, at: 0x00CA)
-            machine.load(pointer, at: 0x00E4)
-            machine.load(pointer, at: 0x00E6)
-            autoType("E2B3R\nRUN\n")
+            // Rebuild Integer BASIC's REAL zero-page pointers — the $4A–$FF
+            // block a genuine program tape carried. LOMEM/HIMEM frame the 8 KB
+            // board; PP/PV mark the end of the loaded program so its variables
+            // have somewhere to live (the old $CA/$E4/$E6 scheme was wrong for
+            // this ROM, and left zero headroom -> MEM FULL on the first RUN).
+            let end = load &+ UInt16(truncatingIfNeeded: image.count)
+            machine.load([UInt8(load & 0xFF), UInt8(load >> 8)], at: 0x4A) // LOMEM
+            machine.load([0x00, 0x20], at: 0x4C)                          // HIMEM=$2000
+            machine.load([UInt8(end & 0xFF), UInt8(end >> 8)], at: 0xCA)  // PP = end
+            machine.load([UInt8(end & 0xFF), UInt8(end >> 8)], at: 0xCC)  // PV = end
+            autoType("RUN\n")
         case .binary(let file, let load, let run):
             guard let bytes = TapeLibrary.binary(file) else { return }
             reset()
@@ -957,14 +985,19 @@ final class MachineController {
     /// caps flash to match.
     private(set) var keyFlash: (ascii: UInt8, frame: Int)?
 
-    /// A click on the on-screen keyboard: connects the keyboard if
-    /// needed (using it IS plugging it in), then types.
+    /// A click on the on-screen keyboard. Clicks mechanically and flashes the
+    /// cap, but only registers when the keyboard is actually plugged in.
     func typeKey(_ ascii: UInt8) {
-        if !connected.contains(.keyboard) { connect(.keyboard) }
         keyFlash = (ascii, frame)
         sound.keyClick() // the Datanetics key clicks mechanically even when off
-        // Unpowered: the key clicks but nothing registers — say why, like the
-        // physical keyboard does, instead of giving silent false feedback.
+        // A keyboard you unplugged stays unplugged — clicking a key is using
+        // the keyboard, not re-seating it. Say why and point the user back to
+        // the socket, exactly as the physical keyboard does for stray keys.
+        guard connected.contains(.keyboard) else {
+            typingHintUntil = frame + 480; return
+        }
+        // Unpowered: the key clicks but nothing registers — say why, instead
+        // of giving silent false feedback.
         guard powered else { typingHintUntil = frame + 480; return }
         guard autoTypeQueue.isEmpty else { return } // don't garble an autotyped line
         machine.press(ascii)
@@ -975,6 +1008,13 @@ final class MachineController {
         machine.clearTerminal()
         displayRevision += 1
     }
+
+    // MARK: Drag-and-drop
+
+    /// The payload of the shelf part currently being dragged (a chip group's
+    /// `payload` or a peripheral's `rawValue`). Set at drag start so a drop
+    /// zone can light up ONLY for the matching part instead of for any drag.
+    @ObservationIgnored var draggingPayload: String?
 
     // MARK: Tape recording (P1)
 
@@ -1173,6 +1213,10 @@ final class MachineController {
               let basic = try? ROM.integerBASIC() else { return }
         reset()
         machine.load(basic, at: 0xE000)
-        autoType("E000R\n") // typed at human speed, not dumped instantly
+        // E000R into the KEY queue (not autoType): the BASIC-source/-image
+        // TurboType paths call loadBASIC then run the CPU synchronously, and a
+        // synchronous run drains the key queue but not the autotype queue — so
+        // autoType here left BASIC unstarted and the listing typed into wozmon.
+        machine.type("E000R\n")
     }
 }

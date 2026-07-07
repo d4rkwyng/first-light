@@ -6,6 +6,25 @@ import SwiftUI
 struct KeyboardView: View {
     let controller: MachineController
     @State private var shifted = false
+    @State private var ctrl = false
+
+    /// Type a key through the live modifiers, then release them (both SHIFT
+    /// and CTRL latch for exactly one key, like clicking-and-holding would).
+    private func send(_ ascii: UInt8) {
+        if ctrl {
+            ctrl = false
+            shifted = false
+            // Datanetics CTRL clears bits 5–6 (`& 0x1F`). The Apple-1 ROM only
+            // acts on Ctrl-C — the line break, folded to Return exactly as the
+            // physical keyboard does (handle()) — and ignores every other
+            // control code, so those CTRL combos do nothing here either.
+            guard ascii & 0x1F == 0x03 else { return }
+            controller.typeKey(0x0D)
+            return
+        }
+        controller.typeKey(ascii)
+        shifted = false
+    }
 
     // (base legend, shift legend, base ascii, shifted ascii)
     private let numberRow: [(String, String, UInt8, UInt8)] = [
@@ -30,49 +49,48 @@ struct KeyboardView: View {
                 ForEach(0..<numberRow.count, id: \.self) { i in
                     let key = numberRow[i]
                     dualCap(key.0, key.1, code: key.2, shiftCode: key.3) {
-                        controller.typeKey(shifted ? key.3 : key.2)
-                        shifted = false
+                        send(shifted ? key.3 : key.2)
                     }
                 }
                 cap("RESET", width: 56, legend: .red) { controller.reset() }
             }
             HStack(spacing: 5) {
-                cap("ESC", width: 44, code: 0x1B) { controller.typeKey(0x1B) }
+                cap("ESC", width: 44, code: 0x1B) { send(0x1B) }
                 ForEach(0..<rowQ.count, id: \.self) { i in
-                    cap(rowQ[i].0, code: rowQ[i].1) { controller.typeKey(rowQ[i].1) }
+                    cap(rowQ[i].0, code: rowQ[i].1) { send(rowQ[i].1) }
                 }
-                dualCap("@", "`", code: 0x40) { controller.typeKey(0x40); shifted = false }
+                dualCap("@", "`", code: 0x40) { send(0x40) }
                 cap("CLR", width: 44, legend: .red) { controller.clearScreen() }
             }
             HStack(spacing: 5) {
-                cap("CTRL", width: 52, dim: true) {}
+                cap("CTRL", width: 52, dim: !ctrl, pressed: ctrl) { ctrl.toggle() }
                 ForEach(0..<rowA.count, id: \.self) { i in
-                    cap(rowA[i].0, code: rowA[i].1) { controller.typeKey(rowA[i].1) }
+                    cap(rowA[i].0, code: rowA[i].1) { send(rowA[i].1) }
                 }
                 dualCap(";", "+", code: 0x3B, shiftCode: 0x2B) {
-                    controller.typeKey(shifted ? 0x2B : 0x3B); shifted = false
+                    send(shifted ? 0x2B : 0x3B)
                 }
-                cap("RETURN", width: 68, code: 0x0D) { controller.typeKey(0x0D) }
+                cap("RETURN", width: 68, code: 0x0D) { send(0x0D) }
             }
             HStack(spacing: 5) {
                 cap("SHIFT", width: 66, pressed: shifted) { shifted.toggle() }
                 ForEach(0..<rowZ.count, id: \.self) { i in
-                    cap(rowZ[i].0, code: rowZ[i].1) { controller.typeKey(rowZ[i].1) }
+                    cap(rowZ[i].0, code: rowZ[i].1) { send(rowZ[i].1) }
                 }
                 dualCap(",", "<", code: 0x2C, shiftCode: 0x3C) {
-                    controller.typeKey(shifted ? 0x3C : 0x2C); shifted = false
+                    send(shifted ? 0x3C : 0x2C)
                 }
                 dualCap(".", ">", code: 0x2E, shiftCode: 0x3E) {
-                    controller.typeKey(shifted ? 0x3E : 0x2E); shifted = false
+                    send(shifted ? 0x3E : 0x2E)
                 }
                 dualCap("/", "?", code: 0x2F, shiftCode: 0x3F) {
-                    controller.typeKey(shifted ? 0x3F : 0x2F); shifted = false
+                    send(shifted ? 0x3F : 0x2F)
                 }
                 cap("SHIFT", width: 66, pressed: shifted) { shifted.toggle() }
             }
             HStack(spacing: 5) {
-                cap("", width: 320, code: 0x20) { controller.typeKey(0x20) } // space
-                cap("←", width: 44, code: 0x5F) { controller.typeKey(0x5F) } // rubout
+                cap("", width: 320, code: 0x20) { send(0x20) } // space
+                cap("←", width: 44, code: 0x5F) { send(0x5F) } // rubout
             }
         }
         .padding(.vertical, 14)

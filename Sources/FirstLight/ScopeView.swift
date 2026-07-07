@@ -28,11 +28,21 @@ struct ScopeView: View {
                     Text("DISASSEMBLY").font(.system(size: 8, weight: .bold,
                                                     design: .monospaced))
                         .foregroundStyle(.secondary)
-                    let lines = disassemble(from: Int(regs.pc), count: 14)
-                    ForEach(0..<lines.count, id: \.self) { i in
-                        Text(lines[i])
+                    if controller.cpuVariant == .m6800 {
+                        Text("MC6800 selected — the Scope reads the 6502 core, "
+                             + "which sits idle (no 6800 firmware exists). 6800 "
+                             + "code would disassemble as meaningless 6502 mnemonics.")
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(i == 0 ? .green : .primary)
+                            .foregroundStyle(.orange.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 240, alignment: .leading)
+                    } else {
+                        let lines = disassemble(from: Int(regs.pc), count: 14)
+                        ForEach(0..<lines.count, id: \.self) { i in
+                            Text(lines[i])
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(i == 0 ? .green : .primary)
+                        }
                     }
                 }
                 Divider()
@@ -50,8 +60,8 @@ struct ScopeView: View {
                     let base = (Int(dumpAddress, radix: 16) ?? 0xFF00) & 0xFFF0
                     ForEach(0..<8, id: \.self) { row in
                         let addr = (base + row * 16) & 0xFFFF
-                        let bytes = controller.machine.read(from: addr,
-                                                            to: addr + 15)
+                        let bytes = controller.machine.busPeek(from: addr,
+                                                               to: addr + 15)
                         Text(String(format: "%04X  ", addr)
                              + bytes.map { String(format: "%02X", $0) }
                                  .joined(separator: " "))
@@ -86,8 +96,8 @@ struct ScopeView: View {
         var lines: [String] = []
         var address = pc
         for _ in 0..<count {
-            let bytes = controller.machine.read(from: address,
-                                                to: min(address + 2, 0xFFFF))
+            let bytes = controller.machine.busPeek(from: address,
+                                                   to: min(address + 2, 0xFFFF))
             let (text, length) = Disassembler.line(at: address, bytes: bytes)
             lines.append(text)
             address = (address + length) & 0xFFFF

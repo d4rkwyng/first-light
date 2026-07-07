@@ -198,8 +198,8 @@ struct ContentView: View {
                     Image(systemName: "keyboard.badge.exclamationmark")
                     Text(controller.connected.contains(.keyboard)
                          ? "No power — connect the power supply first."
-                         : "No keyboard connected — double-click its shelf icon, "
-                         + "click any on-screen key, or drag it to its socket.")
+                         : "No keyboard connected — double-click its shelf icon "
+                         + "or drag it to its socket to plug it back in.")
                 }
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.black)
@@ -435,7 +435,8 @@ struct CompactShelf: View {
                                      ? Color.green.opacity(0.7) : .white.opacity(0.9))
                     .frame(width: 30, height: 26)
                     .contentShape(Rectangle())
-                    .draggable(peripheral.rawValue)
+                    .onDrag { controller.draggingPayload = peripheral.rawValue
+                        return NSItemProvider(object: peripheral.rawValue as NSString) }
                     .onTapGesture(count: 2) { controller.toggle(peripheral) }
                     .onHover { inside in
                         hoverID = inside ? peripheral.rawValue
@@ -913,7 +914,8 @@ struct ShelfView: View {
             ForEach(Peripheral.allCases) { peripheral in
                 ShelfItem(peripheral: peripheral,
                           connected: controller.connected.contains(peripheral),
-                          toggle: { controller.toggle(peripheral) })
+                          toggle: { controller.toggle(peripheral) },
+                          onDragStart: { controller.draggingPayload = peripheral.rawValue })
                     .onHover { inside in
                         controller.hoverInfo = inside ? peripheral.blurb : nil
                         controller.highlightedPeripheral = inside ? peripheral : nil
@@ -939,7 +941,8 @@ struct ShelfView: View {
                                   } else {
                                       controller.place(group)
                                   }
-                              })
+                              },
+                              onDragStart: { controller.draggingPayload = group.payload })
                     .onHover { inside in
                         controller.hoverInfo = inside ? group.blurb : nil
                         controller.highlightedGroup = inside ? group : nil
@@ -958,6 +961,7 @@ struct ShelfItem: View {
     let peripheral: Peripheral
     let connected: Bool
     var toggle: () -> Void = {}
+    var onDragStart: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 10) {
@@ -978,7 +982,8 @@ struct ShelfItem: View {
             .fill(Color.white.opacity(connected ? 0.04 : 0.10)))
         .foregroundStyle(.white.opacity(connected ? 0.45 : 0.95))
         .contentShape(Rectangle())
-        .draggable(peripheral.rawValue)
+        .onDrag { onDragStart()
+            return NSItemProvider(object: peripheral.rawValue as NSString) }
         .onTapGesture(count: 2, perform: toggle)
         .opacity(connected ? 0.55 : 1)
         .help(connected ? "Double-click to disconnect" : "Drag to the board, or double-click to connect")
@@ -992,6 +997,7 @@ struct ChipShelfItem: View {
     var highlighted = false       // needed for a load you tried (yellow)
     var justRemoved: Double = 0   // recently pulled — orange flash, fading over ~3s
     let toggle: () -> Void
+    var onDragStart: () -> Void = {}
 
     var body: some View {
         let status = placed ? "Seated"
@@ -1031,7 +1037,8 @@ struct ChipShelfItem: View {
         .shadow(color: glow, radius: 6)
         .foregroundStyle(.white.opacity(placed ? 0.45 : 0.95))
         .contentShape(Rectangle())
-        .draggable(group.payload)
+        .onDrag { onDragStart()
+            return NSItemProvider(object: group.payload as NSString) }
         .onTapGesture(count: 2, perform: toggle)
         .opacity(placed ? 0.6 : 1)
         .help(placed ? "Double-click to pull it from the board"
@@ -1136,15 +1143,8 @@ struct InfoBar: View {
                 + "loaded, type E2B3R to re-enter it with your program "
                 + "intact. (Real Apple-1s worked exactly this way.)", false)
         }
-        if controller.typingHintActive {
-            if !controller.connected.contains(.keyboard) {
-                return ("You're typing, but no keyboard is connected — "
-                    + "double-click its shelf icon, click any on-screen "
-                    + "key, or drag it to its socket on the board.", false)
-            }
-            return ("You're typing, but the machine has no power — "
-                + "connect the power supply first.", false)
-        }
+        // (No keyboard / no power while typing is handled by the orange
+        // capsule overlay — not duplicated here as a tip.)
         if controller.powered, !controller.placed.contains(.cpu) {
             return ("No CPU: the board is warm but nothing is thinking. "
                 + "Note the screen holds its last image — the terminal "
