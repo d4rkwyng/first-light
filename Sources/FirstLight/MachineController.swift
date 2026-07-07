@@ -205,12 +205,22 @@ final class MachineController {
         return max(0, min(1, 1 - Double(loadFramesLeft) / Double(max(1, loadTotalFrames))))
     }
 
+    /// True while the running load was STAGED as an authentic real-time one.
+    private var stagedAuthentic = false
+
     /// Frames an in-flight load advances per tick — and how fast the CPU runs
     /// WHILE it loads, so the authentic ACI bus read (which decodes the FSK in
     /// CPU cycles) stays in lock-step with the deck timer. Recomputed every
-    /// frame: cranking CPU Speed, or dropping the real-time toggle, speeds the
-    /// load that's already running up, not just the next one.
-    var loadSpeed: Int { authenticLoads ? max(1, turboFactor) : max(12, turboFactor) }
+    /// frame: cranking CPU Speed, or dropping the real-time toggle mid-load,
+    /// speeds the load that's already running up, not just the next one.
+    /// The 12× fast-forward applies ONLY to an authentic-staged load whose
+    /// real-time toggle was dropped mid-flight — a quick-staged load already
+    /// has its short ~3 s theater (170 frames) and must play it out, or the
+    /// deck whirr gets chopped after a fraction of a second.
+    var loadSpeed: Int {
+        stagedAuthentic && !authenticLoads ? max(12, turboFactor)
+                                           : max(1, turboFactor)
+    }
 
     /// Stage a cassette: machine assembles, the deck spins for ~3 s with
     /// the FSK warble, then `action` performs the actual load.
@@ -234,6 +244,7 @@ final class MachineController {
         // after ~30 s). MUST match the audio's 6 s — it's the same signal.
         machine.armTape(bytes: bytes, leaderSeconds: 6.0)
         let duration = sound.tapePlay(bytes: bytes, authentic: true)
+        stagedAuthentic = true
         loadTotalFrames = max(1, Int(duration * 60))
         loadFramesLeft = loadTotalFrames
         pendingLoad = nil
@@ -256,6 +267,7 @@ final class MachineController {
         // T1: the deck plays the tape's REAL waveform — the duration is
         // however long those bytes take at the ACI's actual bit rate
         let duration = sound.tapePlay(bytes: bytes, authentic: authenticLoads)
+        stagedAuthentic = authenticLoads
         loadTotalFrames = authenticLoads ? max(1, Int(duration * 60)) : 170
         loadFramesLeft = loadTotalFrames
         pendingLoad = action
