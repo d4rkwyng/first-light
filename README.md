@@ -44,9 +44,10 @@ Delete sends `_`, the Apple-1's rubout.
 
 ## Credits & legal
 
-First Light's own code is [MIT](LICENSE). Bundled historical material has
-its own owners and terms — the full provenance record is in
-[NOTICE.md](NOTICE.md). The short version:
+First Light's own code is [MIT](LICENSE). The MIT license covers only our
+original code — bundled historical ROM images, software cassettes, fonts,
+board fabrication data, and photographs have their own owners and terms;
+the full provenance record is in [NOTICE.md](NOTICE.md). The short version:
 
 - 6502 core: [fake6502](http://rubbermallet.org/fake6502.c) v1.1 by Mike
   Chambers (public domain).
