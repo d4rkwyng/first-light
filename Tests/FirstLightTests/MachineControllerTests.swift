@@ -143,12 +143,22 @@ struct MachineControllerTests {
 
     @Test func loadSpeedTracksCpuSpeedAndRealtimeToggle() {
         let c = makeController()
+        c.connectEverything()
+        // Stage an AUTHENTIC load, then play with the dials mid-flight.
         c.authenticLoads = true; c.turboFactor = 1
+        c.insert(TapeLibrary.tapes[0]) // Integer BASIC — a raw-bytes tape
+        #expect(c.nowLoading != nil)
         #expect(c.loadSpeed == 1)          // real-time
         c.turboFactor = 100
         #expect(c.loadSpeed == 100)        // crank CPU Speed → load speeds up
         c.turboFactor = 1; c.authenticLoads = false
-        #expect(c.loadSpeed >= 12)         // drop the real-time toggle → quick load
+        #expect(c.loadSpeed >= 12)         // drop real-time mid-load → fast-forward
+        c.stopTape()
+        // A QUICK-staged load keeps its short theater at 1× — running it at
+        // 12× chopped the deck whirr after a fraction of a second.
+        c.insert(TapeLibrary.tapes[0])
+        #expect(c.nowLoading != nil)
+        #expect(c.loadSpeed == 1)
     }
 
     // MARK: Drop zones don't cover each other
