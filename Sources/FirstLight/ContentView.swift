@@ -674,10 +674,11 @@ struct WorkbenchBackground: View {
     }
 }
 
-/// The app's mark: the Woz Monitor's boot prompt (backslash + block cursor)
-/// filled with the 1977 six-stripe palette. The glyph is ours — the machine's
-/// actual first words — and the stripes say the era without borrowing
-/// anyone's trademark. Matches the app icon (Tools/makeicon.swift).
+/// The app's mark: the Woz Monitor's boot prompt (backslash + the Apple-1's
+/// "@" cursor — the 2513 had no inverse video; a block would be the Apple
+/// II's cursor) filled with the 1977 six-stripe palette. The glyph is ours —
+/// the machine's actual first screen — and the stripes say the era without
+/// borrowing anyone's trademark. Matches the app icon (Tools/makeicon.swift).
 struct RainbowPrompt: View {
     static let stripes: [Color] = [
         Color(red: 0.38, green: 0.73, blue: 0.27),  // green
@@ -696,7 +697,7 @@ struct RainbowPrompt: View {
                 }
             }
             .mask(
-                Text("\\\u{2588}")
+                Text("\\@")
                     .font(.system(size: geo.size.height * 0.9,
                                   weight: .bold, design: .monospaced))
                     .minimumScaleFactor(0.3)
