@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.png" width="128" alt="First Light — the Apple-1's boot prompt in six stripes"></p>
+
 # First Light
 
 A living Apple-1 for Apple's 50th anniversary. A native Mac app where the
@@ -25,7 +27,11 @@ reference; ⌘F is full-screen phosphor. See [docs/PLAN.md](docs/PLAN.md).
 
 Download the latest notarized build from
 [Releases](https://github.com/d4rkwyng/first-light/releases) — or build it
-yourself below. Requires macOS 15.
+yourself below. Requires macOS 15 or later. Or:
+
+```sh
+brew install --cask d4rkwyng/tap/first-light
+```
 
 ## Build & test
 
