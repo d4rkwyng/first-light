@@ -62,9 +62,11 @@ func draw(_ px: Int) -> NSImage {
     NSColor(red: 0.02, green: 0.05, blue: 0.03, alpha: 1).setFill()
     NSBezierPath(roundedRect: glass, xRadius: size * 0.07, yRadius: size * 0.07).fill()
 
-    // the boot prompt + cursor, striped
+    // The boot prompt + cursor, striped. The cursor is the Apple-1's
+    // blinking "@" (the 2513 had no inverse video) — a solid block would
+    // be the Apple II's cursor, the wrong machine.
     let font = NSFont.monospacedSystemFont(ofSize: size * 0.36, weight: .bold)
-    let s = NSAttributedString(string: "\\\u{2588}",
+    let s = NSAttributedString(string: "\\@",
                                attributes: [.font: font, .foregroundColor: NSColor.white])
     let ts = s.size()
     let at = CGPoint(x: glass.midX - ts.width / 2, y: glass.midY - ts.height / 2)
