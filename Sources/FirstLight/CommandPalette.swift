@@ -57,7 +57,7 @@ enum Palette {
 struct CommandPaletteView: View {
     let controller: MachineController
     let dismiss: () -> Void
-    @State private var query = ""
+    @ViewState private var query = ""
 
     private var filtered: [PaletteAction] {
         guard !query.isEmpty else { return Palette.actions }
@@ -105,7 +105,7 @@ struct CommandPaletteView: View {
 private struct PaletteRow: View {
     let action: PaletteAction
     let select: () -> Void
-    @State private var hovered = false
+    @ViewState private var hovered = false
 
     var body: some View {
         Button(action: select) {

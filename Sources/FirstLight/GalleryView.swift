@@ -48,7 +48,7 @@ enum Gallery {
 
 struct GalleryView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var index = 0
+    @ViewState private var index = 0
 
     var body: some View {
         let photo = Gallery.photos[index]

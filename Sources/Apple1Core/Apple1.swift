@@ -402,12 +402,17 @@ public final class Apple1 {
 }
 
 // fake6502's externally-provided memory bus.
+// These must be `public`: an internal @_cdecl symbol is emitted with hidden
+// visibility, and the release build (Swift Build backend, Swift 6.4) prelinks
+// each target into a single object, which localizes hidden symbols — the
+// final link then can't resolve CFake6502's references ("Undefined symbols:
+// _read6502"). Debug builds happen to link either way.
 @_cdecl("read6502")
-func fl_read6502(_ address: UInt16) -> UInt8 {
+public func fl_read6502(_ address: UInt16) -> UInt8 {
     Apple1.current?.busRead(address) ?? 0
 }
 
 @_cdecl("write6502")
-func fl_write6502(_ address: UInt16, _ value: UInt8) {
+public func fl_write6502(_ address: UInt16, _ value: UInt8) {
     Apple1.current?.busWrite(address, value)
 }

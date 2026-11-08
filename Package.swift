@@ -9,8 +9,9 @@ let package = Package(
         .executable(name: "FirstLight", targets: ["FirstLight"]),
     ],
     targets: [
-        // Mike Chambers' fake6502 (public domain), unmodified except for
-        // disabling the NES_CPU define so BCD arithmetic works.
+        // Mike Chambers' fake6502 (public domain), modified only to disable
+        // the NES_CPU define and to make decimal-mode ADC/SBC store their
+        // BCD result (the stock code overwrote it with the binary sum).
         .target(name: "CFake6502"),
 
         // The Apple-1 machine: memory map, PIA 6820, terminal section, ROMs.

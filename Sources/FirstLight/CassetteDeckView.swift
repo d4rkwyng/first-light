@@ -4,7 +4,7 @@ import SwiftUI
 /// mechanical piano keys below. PLAY sits depressed while a tape loads.
 struct TapeDeckBar: View {
     let controller: MachineController
-    @State private var showChooser = false
+    @ViewState private var showChooser = false
 
     var body: some View {
         let loading = controller.nowLoading != nil
@@ -336,7 +336,7 @@ struct TapeChooser: View {
 private struct TapeRow: View {
     let tape: Tape
     let action: () -> Void
-    @State private var hovered = false
+    @ViewState private var hovered = false
 
     var body: some View {
         Button(action: action) {
@@ -364,10 +364,10 @@ private struct TapeRow: View {
 struct RecordTapeView: View {
     let controller: MachineController
     let dismiss: () -> Void
-    @State private var name = "MY TAPE"
-    @State private var preset = 0
-    @State private var fromHex = "0000"
-    @State private var toHex = "0FFF"
+    @ViewState private var name = "MY TAPE"
+    @ViewState private var preset = 0
+    @ViewState private var fromHex = "0000"
+    @ViewState private var toHex = "0FFF"
 
     private static let presets: [(String, Int, Int)] = [
         ("RAM bank W — your wozmon work ($0000-$0FFF)", 0x0000, 0x0FFF),

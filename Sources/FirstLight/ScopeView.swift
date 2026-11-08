@@ -5,7 +5,7 @@ import Apple1Core
 /// memory dump. The modern window into the 1976 machine.
 struct ScopeView: View {
     let controller: MachineController
-    @State private var dumpAddress = "FF00"
+    @ViewState private var dumpAddress = "FF00"
 
     var body: some View {
         // refresh ~10×/sec, not every frame

@@ -330,15 +330,21 @@ static void adc() {
     
     #ifndef NES_CPU
     if (status & FLAG_DECIMAL) {
-        clearcarry();
-        
-        if ((a & 0x0F) > 0x09) {
-            a += 0x06;
-        }
-        if ((a & 0xF0) > 0x90) {
-            a += 0x60;
-            setcarry();
-        }
+        /* NMOS 6502 decimal ADC. The stock fake6502 code adjusted `a` and
+           then stored the BINARY `result` over it, so BCD never took effect
+           (Lunar Lander printed heights like 05B0). Z comes from the binary
+           sum (already set above); N and V from the adjusted low nibble
+           plus raw high nibble, as on real silicon. */
+        uint16_t cin = (uint16_t)(result - a - value); /* carry IN; the flag is already overwritten */
+        uint16_t lo = (uint16_t)(a & 0x0F) + (value & 0x0F) + cin;
+        if (lo > 0x09) lo += 0x06;
+        uint16_t hi = (uint16_t)(a >> 4) + ((value >> 4) & 0x0F) + (lo > 0x0F ? 1 : 0);
+        uint16_t partial = (uint16_t)((hi << 4) | (lo & 0x0F));
+        signcalc(partial);
+        overflowcalc(partial, a, value);
+        if (hi > 0x09) hi += 0x06;
+        if (hi > 0x0F) setcarry(); else clearcarry();
+        result = (uint16_t)(((hi << 4) | (lo & 0x0F)) & 0xFF);
         
         clockticks6502++;
     }
@@ -703,16 +709,16 @@ static void sbc() {
 
     #ifndef NES_CPU
     if (status & FLAG_DECIMAL) {
-        clearcarry();
-        
-        a -= 0x66;
-        if ((a & 0x0F) > 0x09) {
-            a += 0x06;
-        }
-        if ((a & 0xF0) > 0x90) {
-            a += 0x60;
-            setcarry();
-        }
+        /* NMOS 6502 decimal SBC: all flags come from the binary subtraction
+           (set above, carry included); only the stored value is BCD-adjusted.
+           `value` holds the inverted operand here. */
+        uint16_t cin = (uint16_t)(result - a - value); /* carry IN; the flag is already overwritten */
+        uint16_t operand = (value ^ 0x00FF) & 0x00FF;
+        int16_t lo = (int16_t)(a & 0x0F) - (int16_t)(operand & 0x0F) - (int16_t)(1 - cin);
+        int16_t hi = (int16_t)(a >> 4) - (int16_t)(operand >> 4);
+        if (lo < 0) { lo -= 0x06; hi--; }
+        if (hi < 0) hi -= 0x06;
+        result = (uint16_t)((((uint16_t)hi << 4) | ((uint16_t)lo & 0x0F)) & 0xFF);
         
         clockticks6502++;
     }
