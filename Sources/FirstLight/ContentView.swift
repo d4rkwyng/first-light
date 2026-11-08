@@ -5,7 +5,7 @@ import SwiftUI
 struct ContentView: View {
     let controller: MachineController
     @AppStorage("tourOffered") private var tourOffered = false
-    @State private var showWelcome = false
+    @ViewState private var showWelcome = false
     // Panel layout persists across launches (N6)
     @AppStorage("infoCollapsed") private var infoCollapsed = false
     @AppStorage("shelfCollapsed") private var shelfCollapsed = false
@@ -394,8 +394,8 @@ struct Triangle: Shape {
 struct CompactShelf: View {
     let controller: MachineController
     let expand: () -> Void
-    @State private var hoverBubble: String?
-    @State private var hoverID: String?
+    @ViewState private var hoverBubble: String?
+    @ViewState private var hoverID: String?
 
     private func bubble(_ id: String, _ text: String) -> some View {
         HStack(spacing: 0) {
@@ -825,10 +825,10 @@ struct TutorialPanel: View {
 /// Scales the fixed-coordinate board to the available space.
 struct FittedBoard: View {
     let controller: MachineController
-    @State private var zoom: CGFloat = 1
-    @State private var zoomBase: CGFloat = 1
-    @State private var pan: CGSize = .zero
-    @State private var panBase: CGSize = .zero
+    @ViewState private var zoom: CGFloat = 1
+    @ViewState private var zoomBase: CGFloat = 1
+    @ViewState private var pan: CGSize = .zero
+    @ViewState private var panBase: CGSize = .zero
 
     private func resetZoom() {
         withAnimation(.easeOut(duration: 0.25)) {
@@ -1330,7 +1330,7 @@ struct MonitorControls: View {
 struct KnobView: View {
     let label: String
     @Binding var value: Double
-    @State private var dragBase: Double?
+    @ViewState private var dragBase: Double?
 
     var body: some View {
         VStack(spacing: 5) {

@@ -336,17 +336,17 @@ struct BoardView: View {
              frame: CGRect(x: 946, y: 314, width: 20, height: 222)),
     ]
 
-    @State private var targetedPort: Peripheral?
-    @State private var aciSeated = false
-    @State private var pulledPort: Peripheral?
-    @State private var pullOffset: CGSize = .zero
-    @State private var liftedChip: String?
-    @State private var hoveredChip: String?
-    @State private var hoveredPort: Peripheral?
-    @State private var liftOffset: CGSize = .zero
-    @State private var aciX: CGFloat = 720
-    @State private var aciY: CGFloat = 426
-    @State private var targetedZone: ChipGroup?
+    @ViewState private var targetedPort: Peripheral?
+    @ViewState private var aciSeated = false
+    @ViewState private var pulledPort: Peripheral?
+    @ViewState private var pullOffset: CGSize = .zero
+    @ViewState private var liftedChip: String?
+    @ViewState private var hoveredChip: String?
+    @ViewState private var hoveredPort: Peripheral?
+    @ViewState private var liftOffset: CGSize = .zero
+    @ViewState private var aciX: CGFloat = 720
+    @ViewState private var aciY: CGFloat = 426
+    @ViewState private var targetedZone: ChipGroup?
 
     /// Where each chip set seats on the board.
     static func passiveBlurb(_ kind: Int) -> String {

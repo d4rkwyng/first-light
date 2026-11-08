@@ -32,7 +32,7 @@ struct FirstLightApp: App {
         }
     }
 
-    @State private var controller = MachineController()
+    @ViewState private var controller = MachineController()
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {

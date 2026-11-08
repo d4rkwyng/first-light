@@ -5,8 +5,8 @@ import SwiftUI
 /// uppercase-only, like the hardware. RESET and CLR are real.
 struct KeyboardView: View {
     let controller: MachineController
-    @State private var shifted = false
-    @State private var ctrl = false
+    @ViewState private var shifted = false
+    @ViewState private var ctrl = false
 
     /// Type a key through the live modifiers, then release them (both SHIFT
     /// and CTRL latch for exactly one key, like clicking-and-holding would).
