@@ -43,6 +43,10 @@ project, [Mike Willegal](https://willegal.net), and
   Dis-Assembler, Extended Monitor, Blackjack, Conway's Life): distributed on
   Apple's $5 cassettes or in period newsletters; preserved and shared by the
   community for education.
+  Hamurabi and Mini-Startrek are the apple1software.com listings (Hamurabi's
+  line 252 corrects a typo in that listing, `"FS;` → `";S;`, that Integer BASIC
+  rejects). Life is the tape that came with the Apple-1, decoded from the
+  [Apple 1 Notes](https://apple1notes.com) recording ($0280-$0900, run 400R).
 - **Microchess** — © 1976 Peter Jennings, the first commercial game software
   for a personal computer. Included as preserved by the community;
   removed on request.
@@ -55,7 +59,9 @@ project, [Mike Willegal](https://willegal.net), and
 
 `Sources/CFake6502/` — **fake6502** v1.1 © 2011 Mike Chambers, released into
 the public domain ("but if you use it please do give credit" — credit given,
-gladly). Unmodified except for disabling the NES quirk flag.
+gladly). Modified only to disable the NES quirk flag and to make decimal-mode
+(BCD) `ADC`/`SBC` actually store their BCD result — the stock code computed
+it and then overwrote it with the binary sum.
 
 ## Board fabrication data
 

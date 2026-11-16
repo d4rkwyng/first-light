@@ -203,7 +203,7 @@ struct TracesView: View {
 /// re-renders only THIS layer at 20 Hz, not the whole board.
 struct PowerNetLayer: View {
     let controller: MachineController
-    @State private var poweredAtFrame: Int?
+    @ViewState private var poweredAtFrame: Int?
 
     var body: some View {
         let opacity: Double = {

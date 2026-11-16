@@ -52,6 +52,39 @@ func runUntil(_ machine: Apple1, contains needle: String,
         #expect(runUntil(m, contains: "HIJKLMNOPQRSTUVWXYZ"))
     }
 
+    @Test func decimalModeArithmeticIsBCD() throws {
+        // The stock fake6502 decimal code adjusted A and then stored the
+        // binary sum over it, so BCD never happened (Lunar Lander showed
+        // heights like 05B0). Known-good NMOS results, carry included.
+        let m = try Apple1()
+        let program: [UInt8] = [
+            0xF8,                                           // SED
+            0x18, 0xA9, 0x58, 0x69, 0x46, 0x85, 0x10,       // 58+46 = 04 C=1
+            0x08, 0x68, 0x85, 0x11,                         //   (P)
+            0x38, 0xA9, 0x12, 0x69, 0x34, 0x85, 0x12,       // 12+34+1 = 47
+            0x18, 0xA9, 0x99, 0x69, 0x01, 0x85, 0x13,       // 99+01 = 00 C=1
+            0x38, 0xA9, 0x46, 0xE9, 0x12, 0x85, 0x14,       // 46-12 = 34
+            0x38, 0xA9, 0x40, 0xE9, 0x13, 0x85, 0x15,       // 40-13 = 27
+            0x38, 0xA9, 0x12, 0xE9, 0x21, 0x85, 0x16,       // 12-21 = 91 C=0
+            0x08, 0x68, 0x85, 0x17,                         //   (P)
+            0x18, 0xA9, 0x32, 0xE9, 0x02, 0x85, 0x18,       // 32-02-1 = 29
+            0xD8, 0x4C, 0x1F, 0xFF,                         // CLD; back to wozmon
+        ]
+        m.load(program, at: 0x0300)
+        runUntil(m, contains: "\\", maxCycles: 1_000_000)
+        m.type("300R\n")
+        m.run(cycles: 1_000_000)
+        #expect(m.peek(0x10) == 0x04)
+        #expect(m.peek(0x11) & 0x01 == 0x01, "58+46 carries out")
+        #expect(m.peek(0x12) == 0x47)
+        #expect(m.peek(0x13) == 0x00)
+        #expect(m.peek(0x14) == 0x34)
+        #expect(m.peek(0x15) == 0x27)
+        #expect(m.peek(0x16) == 0x91)
+        #expect(m.peek(0x17) & 0x01 == 0x00, "12-21 borrows")
+        #expect(m.peek(0x18) == 0x29)
+    }
+
     @Test func integerBASICBootsAndRunsAProgram() throws {
         let m = try Apple1()
         m.load(try ROM.integerBASIC(), at: 0xE000)
