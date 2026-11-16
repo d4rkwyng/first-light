@@ -96,8 +96,14 @@ else
 fi
 # Nudge Finder/Dock to drop any cached (pre-icon) artwork for the bundle
 touch "$APP" "$APP/Contents/Info.plist"
-# Stamp the Finder icon directly (bypasses LaunchServices caching)
-swift Tools/seticon.swift dist/AppIcon.iconset/icon_512x512@2x.png "$APP" || true
+# Stamp the Finder icon directly (bypasses LaunchServices caching).
+# Dev builds only: the stamp adds an Icon\r file and a FinderInfo xattr to the
+# bundle root AFTER signing, which `codesign --verify --strict` rejects
+# ("resource fork, Finder information, or similar detritus not allowed") —
+# a distribution bundle must stay exactly as signed. CFBundleIconFile covers it.
+if (( ! RELEASE )); then
+    swift Tools/seticon.swift dist/AppIcon.iconset/icon_512x512@2x.png "$APP" || true
+fi
 echo "built $APP"
 echo "(icon stale? run: killall Dock Finder)"
 

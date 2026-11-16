@@ -290,9 +290,13 @@ public final class Apple1 {
     }
 
     /// Deposit a binary image into RAM (e.g. Integer BASIC at 0xE000).
+    /// Bytes that would run past $FFFF are dropped: user-supplied tapes
+    /// (a "name@FF00.bin", a "FFFC: ..." wozmon line) reach here unchecked,
+    /// and an unclamped range traps and kills the app.
     public func load(_ bytes: [UInt8], at address: UInt16) {
         let start = Int(address)
-        mem.replaceSubrange(start ..< start + bytes.count, with: bytes)
+        let count = min(bytes.count, mem.count - start)
+        mem.replaceSubrange(start ..< start + count, with: bytes.prefix(count))
     }
 
     public func peek(_ address: UInt16) -> UInt8 { mem[Int(address)] }
@@ -310,9 +314,13 @@ public final class Apple1 {
     /// the Scope's panes must show exactly what the 6502 sees, not the raw array.
     public func busPeek(_ address: UInt16) -> UInt8 {
         switch address {
-        case Apple1.kbd:   return piaInstalled ? (lastKey | 0x80) : 0xFF
+        case Apple1.kbd:
+            guard piaInstalled else { return 0xFF }
+            return kbdCR & 0x04 != 0 ? (lastKey | 0x80) : 0x00 // DDR selected
         case Apple1.kbdcr: return piaInstalled ? ((keyQueue.isEmpty ? 0x00 : 0x80) | (kbdCR & 0x3F)) : 0x00
-        case Apple1.dsp:   return piaInstalled ? (dspPending ? 0x80 : 0x00) : 0x00
+        case Apple1.dsp:
+            guard piaInstalled else { return 0x00 }
+            return dspCR & 0x04 != 0 ? (dspPending ? 0x80 : 0x00) : 0x00 // DDR selected
         case Apple1.dspcr: return dspCR & 0x3F
         case 0x0000...0x0FFF: return ramWInstalled ? mem[Int(address)] : 0xFF
         case 0xE000...0xEFFF: return ramXInstalled ? mem[Int(address)] : 0x00

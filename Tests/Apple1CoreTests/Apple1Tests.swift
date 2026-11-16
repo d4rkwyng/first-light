@@ -238,4 +238,29 @@ func runUntil(_ machine: Apple1, contains needle: String,
         #expect(m.terminal.transcript.contains("DONE"),
                 "the stored program must actually RUN")
     }
+
+    @Test func loadPastTopOfMemoryIsClampedNotFatal() throws {
+        // A user tape can name any load address ("x@FFFE.bin", "FFFC: ..."),
+        // so a deposit that runs off the end of the address space must drop
+        // the overflow rather than trap.
+        let m = try Apple1()
+        m.load([0x11, 0x22, 0x33, 0x44], at: 0xFFFE)
+        #expect(m.peek(0xFFFE) == 0x11)
+        #expect(m.peek(0xFFFF) == 0x22)
+        #expect(m.peek(0x0000) == 0x00 && m.peek(0x0001) == 0x00,
+                "overflow must not wrap into zero page")
+    }
+
+    @Test func busPeekMatchesBusReadWhilePIADDRSelected() throws {
+        // Right after reset both PIA control registers are 0, so KBD/DSP
+        // address the data-direction registers and the CPU reads $00 there.
+        // The Scope's side-effect-free view must agree.
+        let m = try Apple1()
+        m.press(0x41)
+        #expect(m.busPeek(0xD010) == m.busRead(0xD010))
+        #expect(m.busPeek(0xD012) == m.busRead(0xD012))
+        // Once wozmon has set CR bit 2, the data registers are visible.
+        runUntil(m, contains: "\\", maxCycles: 1_000_000)
+        #expect(m.busPeek(0xD010) & 0x80 != 0)
+    }
 }
