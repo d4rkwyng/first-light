@@ -6,6 +6,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 }
 
+/// The standard About panel with the author, a clickable repo link, and the
+/// tribute line.
+enum AboutPanel {
+    static let repo = URL(string: "https://github.com/d4rkwyng/first-light")!
+    static let newIssue = URL(string: "https://github.com/d4rkwyng/first-light/issues/new")!
+
+    static func show() {
+        let body: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
+        let credits = NSMutableAttributedString(string: "Made by d4rkwyng\n", attributes: body)
+        credits.append(NSAttributedString(
+            string: "github.com/d4rkwyng/first-light",
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .link: repo]))
+        credits.append(NSAttributedString(
+            string: "\n\nAn Apple-1 tribute for Apple's 50th. Woz Monitor and "
+                + "Integer BASIC © Apple. Not affiliated with Apple Inc.",
+            attributes: body))
+        credits.addAttribute(.paragraphStyle, value: centered,
+                             range: NSRange(location: 0, length: credits.length))
+        NSApplication.shared.orderFrontStandardAboutPanel(options: [
+            .credits: credits,
+            // Marketing version only: an empty build version suppresses the
+            // "(build)" suffix next to "Version x.y.z". AppKit still shows it
+            // when CFBundleVersion merely equals the short version.
+            .version: "",
+            // The tribute line is in the credits; don't repeat
+            // NSHumanReadableCopyright underneath it.
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "",
+        ])
+    }
+}
+
 @main
 struct FirstLightApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -126,6 +162,9 @@ struct FirstLightApp: App {
                     set: { controller.showAudit = $0 }))
                     .keyboardShortcut("a", modifiers: [.command, .option])
             }
+            CommandGroup(replacing: .appInfo) {
+                Button("About First Light") { AboutPanel.show() }
+            }
             CommandGroup(replacing: .help) {
                 Menu("Tutorials") {
                     Button("Operate It") { controller.startTutorial(track: 0) }
@@ -146,6 +185,9 @@ struct FirstLightApp: App {
                 Link("Original Operation Manual (archive.org)",
                      destination: URL(string:
                         "https://archive.org/details/Apple-1_Operation_Manual_1976_Apple")!)
+                Divider()
+                Link("First Light on GitHub", destination: AboutPanel.repo)
+                Link("Report an Issue…", destination: AboutPanel.newIssue)
             }
             CommandMenu("Cassettes") {
                 ForEach(TapeLibrary.tapes.filter { !$0.homebrew }) { tape in
