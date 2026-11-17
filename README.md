@@ -2,6 +2,15 @@
 
 # First Light
 
+<p>
+<a href="https://github.com/d4rkwyng/first-light/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/d4rkwyng/first-light?label=release"></a>
+<a href="https://github.com/d4rkwyng/homebrew-tap/blob/main/Casks/first-light.rb"><img alt="Homebrew cask: d4rkwyng/tap/first-light" src="https://img.shields.io/badge/brew-d4rkwyng%2Ftap%2Ffirst--light-orange"></a>
+<img alt="macOS 15+" src="https://img.shields.io/badge/macOS-15%2B-blue">
+<img alt="Apple silicon only (arm64)" src="https://img.shields.io/badge/Apple%20silicon-arm64%20only-lightgrey">
+<img alt="Signed and notarized" src="https://img.shields.io/badge/signed-notarized-brightgreen">
+<a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/d4rkwyng/first-light"></a>
+</p>
+
 A living Apple-1 for Apple's 50th anniversary. A native Mac app where the
 1976 machine's board is visible chip-by-chip, peripherals connect by
 drag-and-drop, and guided demos show what the $666.66 computer could do —
