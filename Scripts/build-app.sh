@@ -56,7 +56,8 @@ cp Sources/FirstLight/Resources/AppIcon.icns "$APP/Contents/Resources/"
 # bundle with no Info.plist (no icon, no bundle id, unsigned).
 VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)
 VERSION=${VERSION:-0.1.0}
-BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+# CFBundleVersion is the same string, so the About panel shows only the
+# marketing version (no commit-count build number).
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -74,7 +75,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key>
     <string>$VERSION</string>
     <key>CFBundleVersion</key>
-    <string>$BUILD_NUMBER</string>
+    <string>$VERSION</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
