@@ -85,6 +85,36 @@ func runUntil(_ machine: Apple1, contains needle: String,
         #expect(m.peek(0x18) == 0x29)
     }
 
+    @Test func decimalModeTakesNoExtraCycleOnNMOS() throws {
+        // The NMOS 6502 times ADC/SBC identically in binary and decimal mode
+        // (only the 65C02 adds a cycle). fake6502 charged one extra.
+        let m = try Apple1()
+        let program: [UInt8] = [
+            0xF8,             // SED
+            0x69, 0x01,       // ADC #$01   (decimal)
+            0xE9, 0x01,       // SBC #$01   (decimal)
+            0x65, 0x10,       // ADC $10    (decimal, zero page)
+            0xD8,             // CLD
+            0x69, 0x01,       // ADC #$01   (binary)
+            0xE9, 0x01,       // SBC #$01   (binary)
+            0x65, 0x10,       // ADC $10    (binary, zero page)
+        ]
+        m.load(program, at: 0x0300)
+        var snap = m.takeSnapshot()
+        snap.pc = 0x0300
+        m.restore(snap)
+        func step() -> UInt64 {
+            let t0 = m.totalCycles
+            m.run(cycles: 1) // exactly one instruction
+            return m.totalCycles - t0
+        }
+        let decimal = (0..<4).map { _ in step() }
+        let binary = (0..<4).map { _ in step() }
+        #expect(m.pc == 0x030E)
+        #expect(decimal == [2, 2, 2, 3])
+        #expect(binary == [2, 2, 2, 3])
+    }
+
     @Test func resetClearsDecimalAndSetsInterruptDisable() throws {
         // The bug: reset6502() only OR-ed in the constant bit, so a program
         // that ran SED left decimal mode on across ⌘R, and I was never set.

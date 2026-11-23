@@ -10,8 +10,9 @@ let package = Package(
     ],
     targets: [
         // Mike Chambers' fake6502 (public domain), modified only to disable
-        // the NES_CPU define and to make decimal-mode ADC/SBC store their
-        // BCD result (the stock code overwrote it with the binary sum).
+        // the NES_CPU define, to make decimal-mode ADC/SBC store their BCD
+        // result (the stock code overwrote it with the binary sum) without
+        // the 65C02-only extra cycle, and to have RESET set I and clear D.
         .target(name: "CFake6502"),
 
         // The Apple-1 machine: memory map, PIA 6820, terminal section, ROMs.
