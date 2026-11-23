@@ -25,7 +25,8 @@ working knobs (V-HOLD included) that detaches into its own window, and
 a cassette deck that plays each tape's ACTUAL BYTES as bit-true ACI
 audio while it loads. The cassette library holds the official 1976
 catalog (Hamurabi, Microchess, Lunar Lander, Mini-Startrek, Mastermind,
-the Dis-Assembler, the Extended Monitor, Integer BASIC) plus modern
+the Dis-Assembler, the Extended Monitor, Integer BASIC, and Life, the
+tape that came with the Apple-1) plus modern
 homebrew — all machine-verified by `Scripts/verify-tapes.sh`. ⌘K opens
 a command palette that types 1976 syntax for you; ⌘/ is the quick
 reference; ⌘F is full-screen phosphor. See [docs/PLAN.md](docs/PLAN.md).
@@ -36,7 +37,8 @@ reference; ⌘F is full-screen phosphor. See [docs/PLAN.md](docs/PLAN.md).
 
 Download the latest notarized build from
 [Releases](https://github.com/d4rkwyng/first-light/releases) — or build it
-yourself below. Requires macOS 15 or later. Or:
+yourself below. Requires a Mac with Apple silicon and macOS 15 or later.
+Or:
 
 ```sh
 brew install --cask d4rkwyng/tap/first-light
