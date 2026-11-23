@@ -3,15 +3,22 @@ import Foundation
 /// Finds a SwiftPM resource bundle without relying on `Bundle.module` in the
 /// shipped app.
 ///
-/// Why not `Bundle.module`: the accessor SwiftPM generates (command-line
-/// `swift build`) only looks for `<name>.bundle` at `Bundle.main.bundleURL`,
-/// which for an .app is the bundle ROOT (`First Light.app/`), and then at the
-/// absolute build-time path (`…/.build/<triple>/release/<name>.bundle`). If
-/// neither exists it calls `fatalError`. Scripts/build-app.sh puts the bundles
-/// in `Contents/Resources/` (the only place codesign and notarization accept
-/// them), so a packaged app only ever worked on the machine that built it,
-/// through the build-path fallback. 1.0.0 and 1.0.1 crashed at launch
-/// everywhere else.
+/// Why not `Bundle.module`: SwiftPM has two generators for that accessor, and
+/// neither is safe to rely on in a packaged .app.
+///  - The native build system (what Xcode 16's `swift build` and the CI
+///    runner use) only looks for `<name>.bundle` at `Bundle.main.bundleURL`,
+///    which for an .app is the bundle ROOT (`First Light.app/`), and then at
+///    the absolute build-time path (`…/.build/<triple>/release/<name>.bundle`).
+///    If neither exists it traps with "could not load resource bundle".
+///    Scripts/build-app.sh puts the bundles in `Contents/Resources/` (the only
+///    place codesign and notarization accept them), so a packaged app only
+///    ever worked on the machine that built it, through the build-path
+///    fallback. 1.0.0 and 1.0.1 crashed at launch everywhere else.
+///  - The newer swiftbuild generator (Swift 6.4+) checks
+///    `Bundle.main.resourceURL` and a few other candidates, and traps with
+///    "unable to find bundle named …" when they all miss.
+/// The locator below covers the places both generators look (and more), so
+/// it is correct whichever toolchain built the app.
 ///
 /// `locate` checks the places an app, a command-line tool, or a test runner
 /// keep their resource bundles, in that order, and returns nil rather than

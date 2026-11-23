@@ -16,13 +16,17 @@
 #   exists, so a broken app — one that cannot find its bundles inside the
 #   .app — launches fine there and crashes on every other Mac. That is how
 #   1.0.0 and 1.0.1 shipped. So before launching, this script reads every
-#   absolute "/….bundle" path embedded in the executable and renames each
-#   one that exists to "<path>.smoke-hidden" for the duration of the launch
-#   (the same effect as moving .build aside, but it also covers a custom
-#   --scratch-path and leaves the rest of .build alone). A trap renames them
-#   back on exit, Ctrl-C or failure. Only a SIGKILL of this script could
-#   leave one renamed; the next run refuses to start and says what to `mv`
-#   back. Do not run this while a build is writing that .build directory.
+#   absolute path embedded in the executable whose last component is
+#   first-light_Apple1Core.bundle or first-light_FirstLight.bundle (no other
+#   .bundle path is touched) and renames each one that exists to
+#   "<path>.smoke-hidden" for the duration of the launch (the same effect as
+#   moving .build aside, but it also covers a custom --scratch-path and leaves
+#   the rest of .build alone). A trap renames them back on exit, Ctrl-C or
+#   failure, trying every entry; if any rename back fails the script says so
+#   loudly and exits non-zero even if the launch passed. Only a SIGKILL of
+#   this script could leave one renamed silently; the next run refuses to
+#   start and says what to `mv` back. Do not run this while a build is
+#   writing that .build directory.
 set -euo pipefail
 
 APP="${1:-}"
@@ -54,20 +58,38 @@ echo "layout ok: resource bundles in Contents/Resources"
 
 # 2. Hide every build-time bundle path the binary could fall back to.
 typeset -a FALLBACKS HIDDEN
-FALLBACKS=(${(u)${(f)"$(strings -a "$EXE" | grep -E '^/.+\.bundle$' || true)"}})
+# One path per line (paths may contain spaces); only our two bundle names.
+FALLBACKS=(${(u)${(f)"$(strings -a "$EXE" \
+    | grep -E '^/.+/first-light_(Apple1Core|FirstLight)\.bundle$' || true)"}})
+RESTORE_FAILED=0
+# Rename every hidden path back. Tries every entry; entries that could not be
+# restored stay in HIDDEN (so a later call retries them) and set
+# RESTORE_FAILED, which makes the script exit non-zero.
 restore() {
     local d
+    local -a stuck=()
     for d in "${HIDDEN[@]}"; do
-        if [[ -e "$d.smoke-hidden" && ! -e "$d" ]]; then
-            mv "$d.smoke-hidden" "$d" && echo "restored $d"
+        if [[ ! -e "$d.smoke-hidden" && -e "$d" ]]; then
+            continue   # already back
+        fi
+        if [[ -e "$d.smoke-hidden" && ! -e "$d" ]] && mv "$d.smoke-hidden" "$d"; then
+            echo "restored $d"
+        else
+            stuck+=("$d")
+            RESTORE_FAILED=1
+            echo "SMOKE ERROR: could not restore $d — fix by hand: mv '$d.smoke-hidden' '$d'" >&2
         fi
     done
-    HIDDEN=()
+    HIDDEN=("${stuck[@]}")
 }
 cleanup() {
     [[ -n "${PID:-}" ]] && kill -9 "$PID" 2>/dev/null || true
     restore
     [[ -n "${TMP:-}" ]] && rm -rf "$TMP"
+    if (( RESTORE_FAILED )); then
+        echo "SMOKE ERROR: build-time bundle path(s) left renamed (see above); exiting non-zero" >&2
+        exit 1
+    fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM HUP
@@ -123,6 +145,7 @@ else
 fi
 NHIDDEN=${#HIDDEN[@]}
 restore
+(( ! RESTORE_FAILED )) || fail "could not restore every hidden build-time bundle path (see above)"
 
 crash=$(find "$REPORTS" -maxdepth 1 -name 'First Light*.ips' -newer "$MARK" 2>/dev/null || true)
 
