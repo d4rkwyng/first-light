@@ -3,7 +3,7 @@
 User-facing changes to First Light. The release workflow copies the
 matching `## [X.Y.Z]` section into the draft release notes.
 
-## [1.0.1] — Unreleased
+## [1.0.1] - 2026-11-23
 
 ### Changed
 

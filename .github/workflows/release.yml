@@ -32,6 +32,12 @@ on:
 
 permissions: {}
 
+# One release run per tag. A second run for the same tag waits; it does not
+# cancel a notarization that is already in flight.
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release:
     # macos-15 is the Apple silicon (arm64) runner Tankard uses. First Light
@@ -65,10 +71,24 @@ jobs:
             exit 1
           fi
 
+      # Before checkout, so a bad workflow_dispatch input never reaches
+      # actions/checkout as refs/tags/<garbage>.
+      - name: Tag format
+        run: |
+          set -euo pipefail
+          if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::Tag must look like vX.Y.Z or vX.Y.Z-suffix (got: $TAG)"
+            exit 1
+          fi
+
+      # refs/tags/ so a branch with the same name is never built. No stored
+      # credential: the upload and the published-release guard use the job's
+      # GITHUB_TOKEN directly.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ env.TAG }}
+          ref: refs/tags/${{ env.TAG }}
           fetch-depth: 0 # build-app.sh versions from `git describe --tags --abbrev=0`
+          persist-credentials: false
 
       # Tankard does not set DEVELOPER_DIR: the macos-15 image's selected
       # Xcode (`xcode-select -p`) is the toolchain. Same here. Package.swift
@@ -76,12 +96,14 @@ jobs:
       - name: Tag and Xcode
         run: |
           set -euo pipefail
-          case "$TAG" in
-            v*) ;;
-            *) echo "::error::Tag must match v* (got: $TAG)"; exit 1 ;;
-          esac
           if [ "$(uname -m)" != "arm64" ]; then
             echo "::error::First Light releases are arm64-only; this runner is $(uname -m)."
+            exit 1
+          fi
+          head=$(git rev-parse HEAD)
+          tag_commit=$(git rev-parse "refs/tags/$TAG^{commit}")
+          if [ "$head" != "$tag_commit" ]; then
+            echo "::error::HEAD is $head, but refs/tags/$TAG points at $tag_commit."
             exit 1
           fi
           described=$(git describe --tags --abbrev=0)
@@ -257,7 +279,11 @@ jobs:
 
       # build-app.sh already runs codesign --verify --strict and spctl.
       # Check again, and check the staple, the arch, and the cask's filename.
+      # The zip is what ships, so its unpacked app gets the same checks plus
+      # the hardened runtime flag and the Team ID.
       - name: Verify the signed app
+        env:
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
@@ -286,8 +312,80 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP"
           xcrun stapler validate "$APP"
           spctl -a -vv "$APP"
+
+          # The zip was made with ditto --keepParent, so it unpacks to
+          # "First Light.app" at the top of the directory.
+          UNZIPPED="$RUNNER_TEMP/first-light-unzipped"
+          rm -rf "$UNZIPPED"
+          mkdir -p "$UNZIPPED"
+          ditto -x -k "$ZIP" "$UNZIPPED"
+          ZAPP="$UNZIPPED/First Light.app"
+          if [ ! -d "$ZAPP" ]; then
+            echo "::error::$ZIP does not unpack to First Light.app."
+            ls -la "$UNZIPPED" || true
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$ZAPP"
+          xcrun stapler validate "$ZAPP"
+          spctl -a -vv "$ZAPP"
+          # codesign -dv writes to stderr. Kept out of the log: it names the team.
+          info=$(codesign -dv --verbose=2 "$ZAPP" 2>&1)
+          if ! printf '%s\n' "$info" | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime[^)]*\)'; then
+            echo "::error::The app in $ZIP is not signed with the hardened runtime."
+            exit 1
+          fi
+          team=$(printf '%s\n' "$info" | sed -n 's/^TeamIdentifier=//p')
+          if [ -z "$team" ] || [ "$team" != "$NOTARY_TEAM_ID" ]; then
+            echo "::error::The app in $ZIP is not signed by the NOTARY_TEAM_ID team."
+            exit 1
+          fi
+          rm -rf "$UNZIPPED"
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
           echo "Verified $ZIP (arm64, macOS $min+)."
+
+      # Signing and notarization are done. Drop the keychain before any
+      # network upload. The always() step at the end repeats this (it is
+      # idempotent) for runs that fail earlier.
+      - name: Delete the signing keychain (after signing)
+        run: |
+          set -euo pipefail
+          # Same path the import step creates. Computed here too, so a failed
+          # import (which never wrote KEYCHAIN_PATH) still deletes the file.
+          KEYCHAIN_PATH="${KEYCHAIN_PATH:-$RUNNER_TEMP/first-light-signing.keychain-db}"
+          if [ -n "${ORIGINAL_KEYCHAIN:-}" ] && [ -e "$ORIGINAL_KEYCHAIN" ]; then
+            security default-keychain -s "$ORIGINAL_KEYCHAIN" || true
+            security list-keychains -d user -s "$ORIGINAL_KEYCHAIN" || true
+          fi
+          security delete-keychain "$KEYCHAIN_PATH" || true
+          rm -f "$KEYCHAIN_PATH" "$RUNNER_TEMP/developer-id.p12"
+
+      # A rerun may rebuild a draft, never a published release.
+      - name: Refuse to overwrite a published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if out=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>"$RUNNER_TEMP/gh-release-view.err"); then
+            if [ "$out" != "true" ]; then
+              echo "::error::$TAG already has a published GitHub release. This workflow only creates or updates drafts; it will not touch a published release."
+              exit 1
+            fi
+            # overwrite_files is false, so an existing asset would be skipped
+            # and the draft would keep the old zip. Fail instead.
+            asset=$(basename "$ZIP")
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
+              echo "::error::The draft for $TAG already has $asset. Delete that asset (or the draft) and run again."
+              exit 1
+            fi
+            echo "$TAG has a draft release; uploading to it."
+          elif grep -qi 'release not found' "$RUNNER_TEMP/gh-release-view.err"; then
+            echo "No release for $TAG yet; the upload creates a draft."
+          else
+            echo "::error::Could not check the release for $TAG:"
+            cat "$RUNNER_TEMP/gh-release-view.err"
+            exit 1
+          fi
 
       - name: Upload to the draft release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
@@ -296,6 +394,8 @@ jobs:
           files: ${{ env.ZIP }}
           body_path: ${{ runner.temp }}/release-notes.md
           fail_on_unmatched_files: true
+          # Never replace an asset already on the release.
+          overwrite_files: false
           # A draft is not published and cannot be the repository's latest
           # release. make_latest false is set anyway. Publishing is manual.
           # A suffix (v1.0.1-rc1) is also a prerelease. Notarization is unchanged.

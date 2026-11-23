@@ -20,8 +20,9 @@ Repository secrets (Settings → Secrets and variables → Actions):
 | `NOTARY_PASSWORD` | App-specific password from appleid.apple.com |
 
 The workflow imports the certificate into a temporary keychain, stores a
-`notarytool` profile in that same keychain, and deletes the keychain at the
-end of the job. `Scripts/build-app.sh --release` is given `CODESIGN_ID` and
+`notarytool` profile in that same keychain, and deletes the keychain as
+soon as the signed app is verified, before anything is uploaded (and again
+at the end of the job, in case an earlier step failed). `Scripts/build-app.sh --release` is given `CODESIGN_ID` and
 `NOTARY_PROFILE`, plus `NOTARY_KEYCHAIN` so `notarytool submit` looks in
 that file keychain. Leave `NOTARY_KEYCHAIN` unset for a local release; the
 script's signing, notarization, and stapling are otherwise unchanged. The
@@ -42,7 +43,12 @@ commit. `Scripts/build-app.sh` names the zip from that, and the cask
 downloads `releases/download/vX.Y.Z/First-Light-X.Y.Z.zip`.
 
 To rebuild an existing tag without pushing it again: Actions → Release →
-Run workflow, and pass the tag (for example `v1.0.1`).
+Run workflow, and pass the tag (for example `v1.0.1`). This only rebuilds a
+**draft**. The workflow refuses to run the upload if the tag already has a
+published release, and it never replaces an asset: if the draft already
+has `First-Light-X.Y.Z.zip`, delete that asset (or the draft) first. The
+workflow checks out `refs/tags/vX.Y.Z` (never a branch of the same name)
+and fails if the tag is not of the form `vX.Y.Z` or `vX.Y.Z-suffix`.
 
 ## Draft
 
