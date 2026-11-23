@@ -144,9 +144,15 @@ public final class Apple1 {
         return activity
     }
 
+    /// The Woz Monitor PROM contents, kept so nothing can leave the ROM
+    /// window altered: `load` skips it, `restore` re-installs it.
+    private let wozmonROM: [UInt8]
+    static let romRange = 0xFF00...0xFFFF
+
     public init(wozmon: [UInt8]) {
         precondition(wozmon.count == 256, "Woz Monitor ROM must be 256 bytes")
-        mem.replaceSubrange(0xFF00...0xFFFF, with: wozmon)
+        wozmonROM = wozmon
+        mem.replaceSubrange(Apple1.romRange, with: wozmon)
         Apple1.current = self
         reset()
     }
@@ -215,6 +221,8 @@ public final class Apple1 {
     public func restore(_ snap: Snapshot) {
         guard snap.mem.count == 0x10000 else { return } // reject a corrupt image
         mem = [UInt8](snap.mem)
+        // the PROMs are not RAM: whatever the file says, $FF00-$FFFF is wozmon
+        mem.replaceSubrange(Apple1.romRange, with: wozmonROM)
         fake6502_restore(snap.a, snap.x, snap.y, snap.sp, snap.status, snap.pc)
         totalCycles = snap.totalCycles
         kbdCR = snap.kbdCR
@@ -292,11 +300,14 @@ public final class Apple1 {
     /// Deposit a binary image into RAM (e.g. Integer BASIC at 0xE000).
     /// Bytes that would run past $FFFF are dropped: user-supplied tapes
     /// (a "name@FF00.bin", a "FFFC: ..." wozmon line) reach here unchecked,
-    /// and an unclamped range traps and kills the app.
+    /// and an unclamped range traps and kills the app. Bytes aimed at the
+    /// Woz Monitor PROMs ($FF00-$FFFF) are ignored, as the bus would: a
+    /// tape can't overwrite the ROM for the rest of the session.
     public func load(_ bytes: [UInt8], at address: UInt16) {
         let start = Int(address)
-        let count = min(bytes.count, mem.count - start)
-        mem.replaceSubrange(start ..< start + count, with: bytes.prefix(count))
+        let end = min(start + bytes.count, Apple1.romRange.lowerBound)
+        guard end > start else { return }
+        mem.replaceSubrange(start ..< end, with: bytes.prefix(end - start))
     }
 
     public func peek(_ address: UInt16) -> UInt8 { mem[Int(address)] }

@@ -295,12 +295,39 @@ func runUntil(_ machine: Apple1, contains needle: String,
         // A user tape can name any load address ("x@FFFE.bin", "FFFC: ..."),
         // so a deposit that runs off the end of the address space must drop
         // the overflow rather than trap.
+        // $FFFE-$FFFF is now write-protected Woz Monitor ROM (see
+        // loadNeverOverwritesTheWozMonitorROM), so the deposit must leave the
+        // ROM's own bytes there rather than 0x11/0x22.
         let m = try Apple1()
+        let rom = try ROM.wozmon()
         m.load([0x11, 0x22, 0x33, 0x44], at: 0xFFFE)
-        #expect(m.peek(0xFFFE) == 0x11)
-        #expect(m.peek(0xFFFF) == 0x22)
+        #expect(m.peek(0xFFFE) == rom[0xFE])
+        #expect(m.peek(0xFFFF) == rom[0xFF])
         #expect(m.peek(0x0000) == 0x00 && m.peek(0x0001) == 0x00,
                 "overflow must not wrap into zero page")
+    }
+
+    @Test func loadNeverOverwritesTheWozMonitorROM() throws {
+        // A "name@FF00.bin" tape or a "FF00: ..." line used to replace the
+        // monitor for the rest of the session (reset/power-up never restore
+        // it). ROM writes are now ignored; RAM below the ROM still loads.
+        let m = try Apple1()
+        let rom = try ROM.wozmon()
+        m.load([UInt8](repeating: 0xEA, count: 0x200), at: 0xFE00)
+        for i in 0..<256 {
+            #expect(m.peek(UInt16(0xFF00 + i)) == rom[i])
+        }
+        #expect(m.peek(0xFEFF) == 0xEA, "bytes below the ROM still land")
+        // A snapshot whose ROM window was altered can't corrupt it either.
+        var snap = m.takeSnapshot()
+        var bytes = [UInt8](snap.mem)
+        bytes[0xFF00] = 0x00
+        snap.mem = Data(bytes)
+        m.restore(snap)
+        #expect(m.peek(0xFF00) == rom[0])
+        // ...and the monitor still boots.
+        m.reset()
+        #expect(runUntil(m, contains: "\\", maxCycles: 1_000_000))
     }
 
     @Test func busPeekMatchesBusReadWhilePIADDRSelected() throws {
