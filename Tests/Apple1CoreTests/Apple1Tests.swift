@@ -115,6 +115,20 @@ func runUntil(_ machine: Apple1, contains needle: String,
         #expect(binary == [2, 2, 2, 3])
     }
 
+    @Test func pulledPIAPrintsNothing() throws {
+        // The bug: busWrite ignored piaInstalled, so with the PIA pulled the
+        // monitor's STA DSP still reached the terminal and "\\" appeared.
+        let m = try Apple1()
+        m.piaInstalled = false
+        m.reset()
+        m.run(cycles: 1_000_000)
+        #expect(m.terminal.transcript.isEmpty)
+        // Seat it again and the prompt comes back.
+        m.piaInstalled = true
+        m.reset()
+        #expect(runUntil(m, contains: "\\", maxCycles: 1_000_000))
+    }
+
     @Test func resetClearsDecimalAndSetsInterruptDisable() throws {
         // The bug: reset6502() only OR-ed in the constant bit, so a program
         // that ran SED left decimal mode on across ⌘R, and I was never set.

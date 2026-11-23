@@ -393,6 +393,9 @@ public final class Apple1 {
     }
 
     func busWrite(_ address: UInt16, _ value: UInt8) {
+        // No PIA: its four registers aren't there, so the monitor's setup and
+        // STA DSP go nowhere and nothing ever reaches the display.
+        if !piaInstalled, (Apple1.kbd...Apple1.dspcr).contains(address) { return }
         switch address {
         case Apple1.dsp:
             guard dspCR & 0x04 != 0 else { break } // DDR setup write
