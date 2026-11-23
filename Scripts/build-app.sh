@@ -11,6 +11,10 @@
 #              and zip → dist/First-Light-<version>.zip. Requires:
 #                CODESIGN_ID     "Developer ID Application: …" identity
 #                NOTARY_PROFILE  a `xcrun notarytool store-credentials` profile
+#                NOTARY_KEYCHAIN optional file keychain that holds that profile.
+#                                The release workflow sets it. Unset, notarytool
+#                                uses its default keychain (a profile stored on
+#                                this Mac with store-credentials).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -117,7 +121,14 @@ if (( RELEASE )); then
     # Submit a zip for notarization, staple the ticket to the app, then
     # re-zip — the stapled bundle is what users must receive.
     ditto -c -k --keepParent "$APP" "$ZIP"
-    xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+    # A profile stored in a file keychain (CI's temporary keychain) is
+    # invisible to notarytool unless submit is given that same --keychain.
+    # Unset, this is the same command as before.
+    notary=(xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait)
+    if [[ -n "${NOTARY_KEYCHAIN:-}" ]]; then
+        notary+=(--keychain "$NOTARY_KEYCHAIN")
+    fi
+    "${notary[@]}"
     xcrun stapler staple "$APP"
     rm -f "$ZIP"
     ditto -c -k --keepParent "$APP" "$ZIP"
