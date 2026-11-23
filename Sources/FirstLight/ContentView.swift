@@ -160,10 +160,17 @@ struct ContentView: View {
                                            set: { controller.customTapeRequested = $0 }),
                       allowedContentTypes: [.plainText, .data, .audio]) { result in
             if case .success(let url) = result {
-                let accessing = url.startAccessingSecurityScopedResource()
+                // insertCustom opens the security scope around its own reads
+                // (audio is decoded asynchronously)
                 controller.insertCustom(url: url)
-                if accessing { url.stopAccessingSecurityScopedResource() }
             }
+        }
+        .alert("Can't load that tape",
+               isPresented: Binding(get: { controller.customTapeError != nil },
+                                    set: { if !$0 { controller.customTapeError = nil } })) {
+            Button("OK", role: .cancel) { controller.customTapeError = nil }
+        } message: {
+            Text(controller.customTapeError ?? "")
         }
         .sheet(isPresented: Binding(get: { controller.aciInspectRequested },
                                     set: { controller.aciInspectRequested = $0 })) {

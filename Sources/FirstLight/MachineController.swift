@@ -956,26 +956,86 @@ final class MachineController {
     /// BASIC source (numbered lines — typed into BASIC and RUN), or a
     /// raw .bin (loads at $0300, or at the address in a "name@0280.bin"
     /// style filename; runs from the load address).
+    /// The Apple-1 addresses 64 KB, so no real tape is bigger. Anything
+    /// larger is refused up front: synthesizing its FSK audio used to need
+    /// ~265 samples per byte (about 1 GB for a 1 MB file) on the main thread.
+    nonisolated static let maxCustomTapeBytes = 0x10000
+
+    /// Shown (and cleared) by the bench when a custom tape can't be loaded.
+    var customTapeError: String?
+
     func insertCustom(url: URL) {
         ensure6502()
+        customTapeError = nil
         let title = url.deletingPathExtension().lastPathComponent
+        let file = url.lastPathComponent
         let ext = url.pathExtension.lowercased()
         if ["wav", "aif", "aiff", "mp3", "m4a"].contains(ext) {
-            // a real tape recording: decode the FSK back into bytes
-            guard let bytes = try? TapeDecoder.decode(url: url) else { return }
-            lastTape = nil
-            lastCustomLoad = (title, Data(bytes), true)
-            stageLoad(name: title, bytes: bytes) { [weak self] in
-                self?.performCustom(name: title, data: Data(bytes), isBin: true)
+            // a real tape recording: decode the FSK back into bytes — off the
+            // main thread, since a long recording takes a while
+            Task { [weak self] in
+                let result = await Task.detached(priority: .userInitiated) {
+                    let accessing = url.startAccessingSecurityScopedResource()
+                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                    return Result {
+                        try TapeDecoder.decode(url: url,
+                                               maxBytes: MachineController.maxCustomTapeBytes)
+                    }
+                }.value
+                guard let self else { return }
+                switch result {
+                case .success(let bytes):
+                    self.ensure6502()
+                    self.lastTape = nil
+                    self.lastCustomLoad = (title, Data(bytes), true)
+                    self.stageLoad(name: title, bytes: bytes) { [weak self] in
+                        self?.performCustom(name: title, data: Data(bytes), isBin: true)
+                    }
+                case .failure(let error):
+                    self.customTapeError = Self.describe(error, file: file)
+                }
             }
             return
         }
-        guard let data = try? Data(contentsOf: url) else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        if let size, size > Self.maxCustomTapeBytes {
+            customTapeError = Self.tooBig(file: file, bytes: size)
+            return
+        }
+        guard let data = try? Data(contentsOf: url) else {
+            customTapeError = "\(file) couldn't be read."
+            return
+        }
+        guard data.count <= Self.maxCustomTapeBytes else {
+            customTapeError = Self.tooBig(file: file, bytes: data.count)
+            return
+        }
         lastTape = nil
         lastCustomLoad = (title, data, ext == "bin")
         stageLoad(name: title, bytes: [UInt8](data)) { [weak self] in
             self?.performCustom(name: title, data: data,
                                 isBin: ext == "bin")
+        }
+    }
+
+    private static func tooBig(file: String, bytes: Int) -> String {
+        "\(file) is \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)). "
+            + "An Apple-1 tape holds at most 64 KB — the whole address space."
+    }
+
+    private static func describe(_ error: Error, file: String) -> String {
+        switch error as? TapeDecoder.DecodeError {
+        case .tooLong(let seconds)?:
+            return "\(file) runs \(seconds / 60) min \(seconds % 60) s. An Apple-1 tape "
+                + "recording can be at most \(Int(TapeDecoder.maxSeconds) / 60) minutes."
+        case .tooLarge(let bytes)?:
+            return tooBig(file: file, bytes: bytes)
+        case .noData?:
+            return "No Apple-1 tape data was found in \(file)."
+        default:
+            return "\(file) couldn't be read as a tape recording."
         }
     }
 

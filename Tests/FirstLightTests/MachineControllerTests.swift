@@ -255,4 +255,55 @@ struct MachineControllerTests {
         #expect(!c.handle(keyCode: 123, characters: "\u{F702}", command: false, isRepeat: true))
         #expect(!c.handle(keyCode: 6, characters: "z", command: true, isRepeat: true))
     }
+
+    // MARK: Custom tape limits
+
+    private func tempURL(_ name: String) -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fl-tests-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(name)
+    }
+
+    @Test func oversizedCustomTapeIsRefusedWithAMessage() throws {
+        // The bug: any file of any size was read and its FSK audio
+        // synthesized on the main thread (~265 samples per byte).
+        let c = makeController()
+        c.connectEverything()
+        let big = tempURL("huge.bin")
+        try Data(count: MachineController.maxCustomTapeBytes + 1).write(to: big)
+        c.insertCustom(url: big)
+        #expect(c.nowLoading == nil, "an oversized tape must not start loading")
+        let message = try #require(c.customTapeError)
+        #expect(message.contains("huge.bin") && message.contains("64 KB"))
+
+        // A tape at the limit still loads, and clears the old error.
+        let ok = tempURL("fits.bin")
+        try Data(repeating: 0xEA, count: MachineController.maxCustomTapeBytes).write(to: ok)
+        c.insertCustom(url: ok)
+        #expect(c.customTapeError == nil)
+        #expect(c.nowLoading == "fits")
+    }
+
+    @Test func tapeDecoderCapsDurationAndSizeAndStillRoundTrips() throws {
+        let c = makeController()
+        let wav = tempURL("t.wav")
+        let bytes: [UInt8] = [0xA9, 0x0D, 0x20, 0xEF, 0xFF]
+        try c.sound.writeTapeWAV(bytes: bytes, to: wav) // 10 s leader
+        #expect(try TapeDecoder.decode(url: wav) == bytes, "chunked decode round-trips")
+        #expect(throws: TapeDecoder.DecodeError.self) {
+            try TapeDecoder.decode(url: wav, maxSeconds: 5)
+        }
+        #expect(throws: TapeDecoder.DecodeError.tooLarge(bytes: 5)) {
+            try TapeDecoder.decode(url: wav, maxBytes: 4)
+        }
+    }
+
+    @Test func tapeDurationMatchesRenderedAudio() {
+        // tapePlay reports duration without rendering; it must agree with
+        // what rendering would produce (authentic loads time off it).
+        let phases = TapeEncoding.phases(bytes: [0x00, 0xFF, 0x5A], leaderSeconds: 0.6)
+        let rendered = Double(SoundEngine.tapeSamples(phases: phases).count) / SoundEngine.tapeRate
+        #expect(SoundEngine.tapeDuration(phases: phases) == rendered)
+    }
 }
