@@ -35,7 +35,7 @@ screen: the visible text and the cursor position. See
 [docs/PLAN.md](docs/PLAN.md).
 
 What's new: see the [changelog](CHANGELOG.md), or
-[1.0.1](CHANGELOG.md#101---2026-11-23) for the latest release.
+[1.0.2](CHANGELOG.md#102---2026-11-23) for the latest release.
 
 ![The bench: board, monitor, keyboard, and cassette deck](docs/screenshots/bench.png)
 

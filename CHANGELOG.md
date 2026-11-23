@@ -3,6 +3,16 @@
 User-facing changes to First Light. The release workflow copies the
 matching `## [X.Y.Z]` section into the draft release notes.
 
+## [1.0.2] - 2026-11-23
+
+### Fixed
+
+- First Light 1.0.0 and 1.0.1 crashed at launch on every Mac except the one that built them. The app now loads its ROMs, tapes, board art, and CRT shader from inside the app (`Contents/Resources`), so it starts on any Mac.
+
+### For packagers and builders
+
+- Before uploading, the release workflow now launches the notarized app and checks that both of its resource bundles load, with the build machine's copies of those bundles hidden. A build that would crash like 1.0.0 and 1.0.1 fails the release instead of shipping. See [RELEASING.md](RELEASING.md).
+
 ## [1.0.1] - 2026-11-23
 
 ### Changed
