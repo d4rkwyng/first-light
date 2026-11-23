@@ -1,0 +1,477 @@
+name: Release
+
+# Builds an arm64 First Light.app, signs it with the owner's Developer ID
+# (hardened runtime, secure timestamp — Scripts/build-app.sh --release),
+# notarizes and staples it, and attaches First-Light-<version>.zip to a
+# DRAFT GitHub Release for the tag. Nothing here publishes the release or
+# marks it latest; that stays a manual step (see RELEASING.md).
+#
+# Same shape as d4rkwyng/tankard .github/workflows/release.yml (macos-15,
+# the image's selected Xcode, draft release, pinned actions). First Light's
+# Scripts/build-app.sh takes CODESIGN_ID and a notarytool keychain profile
+# (NOTARY_PROFILE) rather than Apple ID flags, so this workflow imports the
+# Developer ID into a temporary keychain and stores the notary profile
+# there. Owlink's release.yml is the other reference for the draft-only
+# upload.
+#
+# Needs these repository secrets (Settings → Secrets and variables → Actions):
+#   CERT_P12_BASE64    base64 of the exported "Developer ID Application" .p12
+#   CERT_P12_PASSWORD  that .p12's password
+#   NOTARY_APPLE_ID    Apple ID used for notarization
+#   NOTARY_TEAM_ID     10-character Team ID
+#   NOTARY_PASSWORD    app-specific password from appleid.apple.com
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and attach to (e.g. v1.0.1)"
+        required: true
+
+permissions: {}
+
+# One release run per tag. A second run for the same tag waits; it does not
+# cancel a notarization that is already in flight.
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # macos-15 is the Apple silicon (arm64) runner Tankard uses. First Light
+    # ships arm64 only; an Intel image would build the wrong slice.
+    runs-on: macos-15
+    timeout-minutes: 120
+    permissions:
+      contents: write # create the draft release and upload the zip
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      # Profile name is not a secret. The credentials live in the temp keychain.
+      NOTARY_PROFILE: first-light-notary
+    steps:
+      - name: Check secrets
+        env:
+          CERT_P12_BASE64: ${{ secrets.CERT_P12_BASE64 }}
+          CERT_P12_PASSWORD: ${{ secrets.CERT_P12_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=""
+          for s in CERT_P12_BASE64 CERT_P12_PASSWORD NOTARY_APPLE_ID NOTARY_TEAM_ID NOTARY_PASSWORD; do
+            if [ -z "${!s}" ]; then
+              missing="$missing $s"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing. Add them under Settings → Secrets and variables → Actions (see RELEASING.md)."
+            exit 1
+          fi
+
+      # Before checkout, so a bad workflow_dispatch input never reaches
+      # actions/checkout as refs/tags/<garbage>.
+      - name: Tag format
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Tag must look like vX.Y.Z or vX.Y.Z-suffix (got: $TAG)"
+            exit 1
+          fi
+
+      # Before checkout and long before notarization, so a tag that already
+      # has a published release (or a draft that already has the zip) fails
+      # in seconds. A rerun may rebuild a draft, never a published release.
+      # One GraphQL read gives both isDraft and the asset names; any error
+      # or unexpected answer fails the run rather than reading as "no
+      # release". overwrite_files: false on the upload stays as a backstop.
+      - name: Refuse to overwrite a published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ASSET="First-Light-${TAG#v}.zip"
+          # $owner, $name, $tag are GraphQL variables, not shell ones.
+          # shellcheck disable=SC2016
+          query='query($owner: String!, $name: String!, $tag: String!) {
+            repository(owner: $owner, name: $name) {
+              release(tagName: $tag) {
+                isDraft
+                releaseAssets(first: 100) { totalCount nodes { name } }
+              }
+            }
+          }'
+          err="$RUNNER_TEMP/gh-release-check.err"
+          if ! resp=$(gh api graphql \
+              -f query="$query" \
+              -f owner="${GH_REPO%%/*}" \
+              -f name="${GH_REPO#*/}" \
+              -f tag="$TAG" 2>"$err"); then
+            echo "::error::Could not check the GitHub release for $TAG (gh api graphql failed)."
+            cat "$err" || true
+            exit 1
+          fi
+          if [ -z "$resp" ] || ! printf '%s' "$resp" | jq -e '
+              ((.errors // []) | length) == 0
+              and (.data | type) == "object"
+              and (.data.repository | type) == "object"
+              and (.data.repository | has("release"))' >/dev/null; then
+            echo "::error::Unexpected GraphQL answer while checking the release for $TAG."
+            printf '%s\n' "$resp" | jq -c '.errors // empty' 2>/dev/null || true
+            exit 1
+          fi
+          state=$(printf '%s' "$resp" | jq -r '
+            .data.repository.release
+            | if . == null then "none"
+              elif .isDraft == true then "draft"
+              elif .isDraft == false then "published"
+              else "unknown" end')
+          case "$state" in
+            none)
+              echo "No release for $TAG yet; the upload creates a draft."
+              exit 0
+              ;;
+            published)
+              echo "::error::$TAG already has a published GitHub release. This workflow only creates or updates drafts; it will not touch a published release."
+              exit 1
+              ;;
+            draft)
+              ;;
+            *)
+              echo "::error::Could not tell whether the release for $TAG is a draft (state: $state)."
+              exit 1
+              ;;
+          esac
+          # overwrite_files is false, so an existing asset would be skipped
+          # and the draft would keep the old zip. Fail instead. Same payload
+          # as isDraft; more than 100 assets is unexpected, so fail closed.
+          has_asset=$(printf '%s' "$resp" | jq -r --arg a "$ASSET" '
+            .data.repository.release.releaseAssets
+            | if (.nodes | type) != "array" or (.totalCount | type) != "number" then "unknown"
+              elif .totalCount > (.nodes | length) then "unknown"
+              elif any(.nodes[]; .name == $a) then "yes"
+              else "no" end')
+          case "$has_asset" in
+            no)
+              echo "$TAG has a draft release without $ASSET; uploading to it."
+              ;;
+            yes)
+              echo "::error::The draft for $TAG already has $ASSET. Delete that asset (or the draft) and run again."
+              exit 1
+              ;;
+            *)
+              echo "::error::Could not read the asset list of the draft for $TAG."
+              exit 1
+              ;;
+          esac
+
+      # refs/tags/ so a branch with the same name is never built. No stored
+      # credential: the upload and the published-release guard use the job's
+      # GITHUB_TOKEN directly.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          fetch-depth: 0 # build-app.sh versions from `git describe --tags --abbrev=0`
+          persist-credentials: false
+
+      # Tankard does not set DEVELOPER_DIR: the macos-15 image's selected
+      # Xcode (`xcode-select -p`) is the toolchain. Same here. Package.swift
+      # is swift-tools-version 6.0 and the app's minimum system is macOS 15.
+      - name: Tag and Xcode
+        run: |
+          set -euo pipefail
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "::error::First Light releases are arm64-only; this runner is $(uname -m)."
+            exit 1
+          fi
+          head=$(git rev-parse HEAD)
+          tag_commit=$(git rev-parse "refs/tags/$TAG^{commit}")
+          if [ "$head" != "$tag_commit" ]; then
+            echo "::error::HEAD is $head, but refs/tags/$TAG points at $tag_commit."
+            exit 1
+          fi
+          described=$(git describe --tags --abbrev=0)
+          if [ "$described" != "$TAG" ]; then
+            echo "::error::git describe --tags --abbrev=0 is $described, but this release is $TAG. build-app.sh names the zip from git describe, so First-Light-<version>.zip would not match the tag the cask downloads."
+            exit 1
+          fi
+          echo "Selected Xcode: $(xcode-select -p)"
+          xcodebuild -version
+          swift --version
+          sw_vers
+          echo "macOS SDK $(xcrun --show-sdk-version)"
+          if ! swift --version | grep -Eq 'Swift version [6-9]'; then
+            echo "::error::First Light needs Swift 6 or later (Package.swift is swift-tools-version 6.0)."
+            exit 1
+          fi
+
+      # Fails the release when CHANGELOG.md has no section for the tag, so a
+      # release never ships without its list of changes. A suffix
+      # (v1.0.1-rc1) uses the 1.0.1 section, same as Tankard.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          BASE="${VERSION%%-*}"
+          ver_re=$(printf '%s' "$BASE" | sed 's/\./\\./g')
+          section=$(awk -v ver="$ver_re" '
+            $0 ~ "^## \\[" ver "\\]" { found = 1; print; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$section" ]; then
+            echo "::error::CHANGELOG.md has no '## [$BASE]' section."
+            exit 1
+          fi
+          {
+            echo "First Light ${TAG} for macOS 15 and later, Apple silicon (arm64). Signed with Developer ID and notarized."
+            echo
+            printf '%s\n' "$section"
+            echo
+            echo "Download: \`First-Light-${VERSION}.zip\` (the Homebrew cask expects \`releases/download/${TAG}/First-Light-${VERSION}.zip\`)."
+            echo
+            echo "Install or upgrade: \`brew install --cask d4rkwyng/tap/first-light\` / \`brew upgrade --cask first-light\`"
+          } > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      # Scripts/test.sh under full Xcode is `swift test --no-parallel -c release`.
+      # --no-parallel: fake6502 keeps the CPU in C globals, so the two suites
+      # cannot run at once. -c release: the emulation tests run many cycles.
+      # The suite is 49 tests today; none of them assert wall-clock time
+      # (the 60 cps governor counts CPU cycles).
+      - name: Tests
+        run: swift test --no-parallel -c release
+
+      - name: Verify tapes and failure modes
+        run: |
+          set -euo pipefail
+          Scripts/verify-tapes.sh
+          bin="$(swift build --product FirstLight --show-bin-path)/FirstLight"
+          "$bin" --verify-failures
+
+      # Temporary keychain, same security(1) sequence as
+      # apple-actions/import-codesign-certs (the action Tankard uses), done
+      # here so the notary profile can live in that keychain and the always()
+      # step below is what deletes it. Passwords are never echoed.
+      - name: Import signing certificate
+        env:
+          CERT_P12_BASE64: ${{ secrets.CERT_P12_BASE64 }}
+          CERT_P12_PASSWORD: ${{ secrets.CERT_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          # runner.temp is not available in a job-level env expression.
+          KEYCHAIN_PATH="${RUNNER_TEMP}/first-light-signing.keychain-db"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          P12="$RUNNER_TEMP/developer-id.p12"
+          printf '%s' "$CERT_P12_BASE64" | tr -d '[:space:]' | base64 -D > "$P12"
+
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n')
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$P12" \
+            -k "$KEYCHAIN_PATH" \
+            -f pkcs12 \
+            -P "$CERT_P12_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          rm -f "$P12"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          # codesign searches this list. login stays on it, as in
+          # apple-actions/import-codesign-certs. The default keychain is left
+          # alone: notarytool's profile is addressed by NOTARY_KEYCHAIN.
+          ORIGINAL_KEYCHAIN=$(security default-keychain | sed 's/^ *//;s/"//g')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "$ORIGINAL_KEYCHAIN"
+          echo "ORIGINAL_KEYCHAIN=$ORIGINAL_KEYCHAIN" >> "$GITHUB_ENV"
+          echo "NOTARY_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          identities=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p')
+          count=$(printf '%s\n' "$identities" | grep -c . || true)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Imported keychain has no Developer ID Application identity."
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+            exit 1
+          fi
+          uniq_count=$(printf '%s\n' "$identities" | sort -u | grep -c . || true)
+          if [ "$uniq_count" -ne 1 ]; then
+            echo "::error::Expected one Developer ID Application name, found $uniq_count."
+            printf '%s\n' "$identities" | sort -u
+            exit 1
+          fi
+          CODESIGN_ID=$(printf '%s\n' "$identities" | head -1)
+          # A renewed certificate keeps the name and adds a second hash.
+          # codesign rejects the ambiguous name; sign by hash.
+          if [ "$count" -gt 1 ]; then
+            CODESIGN_ID=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+              | awk -F '"' '/Developer ID Application:/ { print $1; exit }' \
+              | awk '{ print $2 }')
+            echo "Developer ID Application name is ambiguous; signing by certificate hash."
+          fi
+          if [ -z "$CODESIGN_ID" ]; then
+            echo "::error::Could not read a signing identity from the imported certificate."
+            exit 1
+          fi
+          echo "Signing identity: $CODESIGN_ID"
+          echo "CODESIGN_ID=$CODESIGN_ID" >> "$GITHUB_ENV"
+
+      - name: Notary keychain profile
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="${KEYCHAIN_PATH:-$RUNNER_TEMP/first-light-signing.keychain-db}"
+          # @env: reads the password from the environment, so it is not a
+          # process argument. store-credentials validates with Apple and
+          # writes the profile into the temporary keychain.
+          xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --team-id "$NOTARY_TEAM_ID" \
+            --password "@env:NOTARY_PASSWORD" \
+            --keychain "$KEYCHAIN_PATH"
+          # Account is profile name on older notarytool, and
+          # com.apple.gke.notary.tool.saved-creds.<profile> on newer ones.
+          # stdout can include the item; don't print it. No -g/-w (those
+          # print the password).
+          acct="com.apple.gke.notary.tool.saved-creds.${NOTARY_PROFILE}"
+          if ! security find-generic-password -a "$acct" "$KEYCHAIN_PATH" >/dev/null \
+            && ! security find-generic-password -a "$NOTARY_PROFILE" "$KEYCHAIN_PATH" >/dev/null; then
+            echo "::error::notarytool profile ${NOTARY_PROFILE} was not stored in the temporary keychain."
+            exit 1
+          fi
+
+      - name: Build, sign, notarize, staple
+        run: |
+          set -euo pipefail
+          # CODESIGN_ID, NOTARY_PROFILE, and NOTARY_KEYCHAIN are already set.
+          # --release signs with the hardened runtime and a secure timestamp,
+          # notarizes, staples, and zips. Do not add flags that skip any of that.
+          # NOTARY_KEYCHAIN only tells notarytool which file keychain holds
+          # the profile; build-app.sh's signing and notarization are unchanged
+          # when it is unset.
+          Scripts/build-app.sh --clean --release
+
+      # build-app.sh already runs codesign --verify --strict and spctl.
+      # Check again, and check the staple, the arch, and the cask's filename.
+      # The zip is what ships, so its unpacked app gets the same checks plus
+      # the hardened runtime flag and the Team ID.
+      - name: Verify the signed app
+        env:
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          APP="dist/First Light.app"
+          ZIP="dist/First-Light-${VERSION}.zip"
+          if [ ! -d "$APP" ] || [ ! -f "$ZIP" ]; then
+            echo "::error::Expected $APP and $ZIP."
+            ls -la dist || true
+            exit 1
+          fi
+          archs=$(lipo -archs "$APP/Contents/MacOS/First Light")
+          if [ "$archs" != "arm64" ]; then
+            echo "::error::Expected an arm64-only binary, got: $archs"
+            exit 1
+          fi
+          min=$(plutil -extract LSMinimumSystemVersion raw -- "$APP/Contents/Info.plist")
+          if [ "$min" != "15.0" ]; then
+            echo "::error::LSMinimumSystemVersion is $min, expected 15.0"
+            exit 1
+          fi
+          short=$(plutil -extract CFBundleShortVersionString raw -- "$APP/Contents/Info.plist")
+          if [ "$short" != "$VERSION" ]; then
+            echo "::error::CFBundleShortVersionString is $short, expected $VERSION"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          xcrun stapler validate "$APP"
+          spctl -a -vv "$APP"
+
+          # The zip was made with ditto --keepParent, so it unpacks to
+          # "First Light.app" at the top of the directory.
+          UNZIPPED="$RUNNER_TEMP/first-light-unzipped"
+          rm -rf "$UNZIPPED"
+          mkdir -p "$UNZIPPED"
+          ditto -x -k "$ZIP" "$UNZIPPED"
+          ZAPP="$UNZIPPED/First Light.app"
+          if [ ! -d "$ZAPP" ]; then
+            echo "::error::$ZIP does not unpack to First Light.app."
+            ls -la "$UNZIPPED" || true
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$ZAPP"
+          xcrun stapler validate "$ZAPP"
+          spctl -a -vv "$ZAPP"
+          # codesign -dv writes to stderr. Kept out of the log: it names the team.
+          info=$(codesign -dv --verbose=2 "$ZAPP" 2>&1)
+          if ! printf '%s\n' "$info" | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime[^)]*\)'; then
+            echo "::error::The app in $ZIP is not signed with the hardened runtime."
+            exit 1
+          fi
+          team=$(printf '%s\n' "$info" | sed -n 's/^TeamIdentifier=//p')
+          if [ -z "$team" ] || [ "$team" != "$NOTARY_TEAM_ID" ]; then
+            echo "::error::The app in $ZIP is not signed by the NOTARY_TEAM_ID team."
+            exit 1
+          fi
+          rm -rf "$UNZIPPED"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          echo "Verified $ZIP (arm64, macOS $min+)."
+
+      # Signing and notarization are done. Drop the keychain before any
+      # network upload. The always() step at the end repeats this (it is
+      # idempotent) for runs that fail earlier.
+      - name: Delete the signing keychain (after signing)
+        run: |
+          set -euo pipefail
+          # Same path the import step creates. Computed here too, so a failed
+          # import (which never wrote KEYCHAIN_PATH) still deletes the file.
+          KEYCHAIN_PATH="${KEYCHAIN_PATH:-$RUNNER_TEMP/first-light-signing.keychain-db}"
+          if [ -n "${ORIGINAL_KEYCHAIN:-}" ] && [ -e "$ORIGINAL_KEYCHAIN" ]; then
+            security default-keychain -s "$ORIGINAL_KEYCHAIN" || true
+            security list-keychains -d user -s "$ORIGINAL_KEYCHAIN" || true
+          fi
+          security delete-keychain "$KEYCHAIN_PATH" || true
+          rm -f "$KEYCHAIN_PATH" "$RUNNER_TEMP/developer-id.p12"
+
+      - name: Upload to the draft release
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
+        with:
+          tag_name: ${{ env.TAG }}
+          files: ${{ env.ZIP }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          fail_on_unmatched_files: true
+          # Never replace an asset already on the release.
+          overwrite_files: false
+          # A draft is not published and cannot be the repository's latest
+          # release. make_latest false is set anyway. Publishing is manual.
+          # A suffix (v1.0.1-rc1) is also a prerelease. Notarization is unchanged.
+          draft: true
+          make_latest: false
+          prerelease: ${{ contains(env.TAG, '-') }}
+
+      - name: Delete the signing keychain
+        if: always()
+        run: |
+          set -euo pipefail
+          # Same path the import step creates. Computed here too, so a failed
+          # import (which never wrote KEYCHAIN_PATH) still deletes the file.
+          KEYCHAIN_PATH="${KEYCHAIN_PATH:-$RUNNER_TEMP/first-light-signing.keychain-db}"
+          if [ -n "${ORIGINAL_KEYCHAIN:-}" ] && [ -e "$ORIGINAL_KEYCHAIN" ]; then
+            security default-keychain -s "$ORIGINAL_KEYCHAIN" || true
+            security list-keychains -d user -s "$ORIGINAL_KEYCHAIN" || true
+          fi
+          security delete-keychain "$KEYCHAIN_PATH" || true
+          rm -f "$KEYCHAIN_PATH" "$RUNNER_TEMP/developer-id.p12"

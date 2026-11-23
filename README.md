@@ -53,6 +53,10 @@ Works with Command Line Tools only (no Xcode required):
 swift run FirstLight              # or just run it directly
 ```
 
+Notarized releases are built by
+[.github/workflows/release.yml](.github/workflows/release.yml). See
+[RELEASING.md](RELEASING.md).
+
 In the app: type at the Woz Monitor (try `FF00.FFFF`), ⌘B drops Integer
 BASIC into RAM and starts it, ⌘R resets. Esc cancels a monitor line;
 Delete sends `_`, the Apple-1's rubout.
