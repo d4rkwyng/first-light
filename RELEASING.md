@@ -68,12 +68,23 @@ a prerelease; its zip name keeps the suffix, and its notes come from the
 
 Open the draft and confirm the app before publishing. Gatekeeper should
 accept it (`spctl`, `stapler validate`, and `codesign --verify --deep
---strict` already ran in the workflow). The workflow also launched the
-unzipped app with `Scripts/smoke-launch.sh`, which hides the runner's
-`.build` while the app runs so SwiftPM's build-path fallback cannot mask a
-missing resource bundle (the 1.0.0/1.0.1 launch crash). To repeat that on
-a downloaded zip: unzip it with `ditto -x -k` and run
+--strict` already ran in the workflow). The workflow's **Launch smoke
+test** step (after the signing keychain is deleted, before the upload)
+unzipped the zip again and ran `Scripts/smoke-launch.sh` on that app: it
+launches the app for 6 s, then runs `First Light --resource-check`, which
+loads one known file from each resource bundle (the Woz Monitor ROM from
+Apple1Core, a board image from FirstLight) through the app's own bundle
+locator and exits non-zero if either is missing. Both run with the
+runner's `.build` bundle paths hidden, so SwiftPM's build-path fallback
+cannot mask a missing resource bundle (the 1.0.0/1.0.1 launch crash). To
+repeat that on a downloaded zip: unzip it with `ditto -x -k` and run
 `Scripts/smoke-launch.sh "<dir>/First Light.app"`.
+
+Known gap (follow-up, not implemented): a crash after the 6 s window is
+not caught. Tapes, the gallery, the other board images, and the BASIC and
+ACI ROMs load later, on user action, through the same static bundle
+accessors; `--resource-check` samples one file per bundle, not every file.
+Before publishing, open the draft's app and load a tape.
 
 ## Publish, then the cask
 
