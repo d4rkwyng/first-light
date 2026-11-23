@@ -1204,7 +1204,9 @@ struct InfoBar: View {
             return ("Try FF00.FFFF to read the ROM. Add the cassette interface to load BASIC (⌘B).", false)
         }
         // Fully assembled: rotate lore every 15 seconds; arrow to skip.
-        let index = (controller.pulseFrame / 900 + controller.factOffset) % Self.facts.count
+        let index = MachineController.factIndex(frame: controller.pulseFrame,
+                                                offset: controller.factOffset,
+                                                count: Self.facts.count)
         let (year, fact) = Self.facts[index]
         return ("\(year) — \(fact)", true)
     }

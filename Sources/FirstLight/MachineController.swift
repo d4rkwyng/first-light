@@ -452,6 +452,15 @@ final class MachineController {
 
     func nextFact() { factOffset += 1 }
 
+    /// Which fact the info bar shows. `factOffset` goes negative when the
+    /// user steps back, and Swift's `%` keeps the dividend's sign, so a
+    /// plain `% count` could index -1 and trap. Always lands in 0..<count.
+    static func factIndex(frame: Int, offset: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        let r = (frame / 900 + offset) % count
+        return r < 0 ? r + count : r
+    }
+
     /// Bumped only when the CRT content (or cursor blink) changes, so the
     /// terminal canvas doesn't redraw 60 times a second for nothing.
     private(set) var displayRevision = 0

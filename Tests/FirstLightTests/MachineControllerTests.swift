@@ -197,4 +197,26 @@ struct MachineControllerTests {
         #expect(fast * 10 < slow,
                 "×100 should finish the load far sooner (\(fast) vs \(slow))")
     }
+
+    // MARK: Info-bar facts
+
+    @Test func previousFactNeverIndexesNegative() {
+        // The bug: one click on the "previous fact" arrow in the first 15 s
+        // gave (0 + -1) % count == -1 and trapped on the array subscript.
+        let c = makeController()
+        c.previousFact()
+        #expect(c.factOffset == -1)
+        let count = 7
+        #expect(MachineController.factIndex(frame: 0, offset: c.factOffset,
+                                            count: count) == count - 1)
+        for offset in -50...50 {
+            for frame in [0, 899, 900, 54_000] {
+                let i = MachineController.factIndex(frame: frame, offset: offset,
+                                                    count: count)
+                #expect((0..<count).contains(i), "frame \(frame) offset \(offset) → \(i)")
+            }
+        }
+        // Forward rotation is unchanged.
+        #expect(MachineController.factIndex(frame: 900 * 3, offset: 1, count: count) == 4)
+    }
 }
