@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="First Light — the Apple-1's boot prompt in six stripes"></p>
+<p align="center"><img src="docs/icon.png" width="128" alt="First Light — the Apple-1's \@ boot prompt in real Signetics 2513 ROM glyphs, six hard 1977 stripes, on a dark CRT in a PCB-green squircle"></p>
 
 # First Light
 
