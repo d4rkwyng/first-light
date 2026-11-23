@@ -6,7 +6,8 @@ import Apple1Core
 /// Controller-level tests for the 6800 processor-swap and the snapshot
 /// round-trip — the two newest features, and the ones the 2026-06 review
 /// found bugs in. These never call `start()`, so no Timer, NSEvent monitor,
-/// or window is created; sound is disabled so no audio engine spins up.
+/// or window is created. Sound is disabled so nothing plays (the
+/// SoundEngine still creates and starts its AVAudioEngine in init).
 /// `.serialized` because each controller's Apple1 owns the shared fake6502
 /// CPU globals.
 @MainActor

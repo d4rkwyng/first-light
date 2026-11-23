@@ -23,7 +23,7 @@ No ownership is claimed. If Apple Inc. objects to their inclusion, they will
 be removed promptly on request.
 
 The Integer BASIC image is the verified-good dump (the widely circulated copy
-with two corrupted bytes at $F2/$12 breaks input; ours is cross-checked
+with two corrupted bytes — $F2 where $12 belongs — breaks input; ours is cross-checked
 against the napple1 project's).
 
 ## Character generator
