@@ -240,7 +240,7 @@ jobs:
       # Scripts/test.sh under full Xcode is `swift test --no-parallel -c release`.
       # --no-parallel: fake6502 keeps the CPU in C globals, so the two suites
       # cannot run at once. -c release: the emulation tests run many cycles.
-      # The suite is 49 tests today; none of them assert wall-clock time
+      # The suite is 59 tests today; none of them assert wall-clock time
       # (the 60 cps governor counts CPU cycles).
       - name: Tests
         run: swift test --no-parallel -c release
@@ -370,7 +370,9 @@ jobs:
       # build-app.sh already runs codesign --verify --strict and spctl.
       # Check again, and check the staple, the arch, and the cask's filename.
       # The zip is what ships, so its unpacked app gets the same checks plus
-      # the hardened runtime flag and the Team ID.
+      # the hardened runtime flag and the Team ID. The launch smoke test is
+      # its own step ("Launch smoke test"), after the signing keychain is
+      # deleted and before the upload.
       - name: Verify the signed app
         env:
           NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
@@ -448,6 +450,37 @@ jobs:
           fi
           security delete-keychain "$KEYCHAIN_PATH" || true
           rm -f "$KEYCHAIN_PATH" "$RUNNER_TEMP/developer-id.p12"
+
+      # Launch the app that ships: unpack $ZIP again (the exact file the
+      # next step uploads) and run Scripts/smoke-launch.sh on it. The script
+      # launches the app for 6 s, then runs `First Light --resource-check`
+      # (loads one file from each resource bundle through the app's own
+      # locator, never Bundle.module) and requires exit 0. While both run it
+      # hides the resource bundles under the checkout's .build: SwiftPM's
+      # generated accessor falls back to that absolute build path (compiled
+      # into the binary), which would mask a missing-resource-bundle crash
+      # on this runner. 1.0.1 passed every check in "Verify the signed app"
+      # and still crashed at launch on users' Macs (could not load resource
+      # bundle). Not caught: a crash after the 6 s window (see RELEASING.md).
+      - name: Launch smoke test
+        run: |
+          set -euo pipefail
+          if [ -z "${ZIP:-}" ] || [ ! -f "$ZIP" ]; then
+            echo "::error::ZIP is not set or missing; \"Verify the signed app\" did not finish."
+            exit 1
+          fi
+          SMOKE_DIR="$RUNNER_TEMP/first-light-smoke"
+          rm -rf "$SMOKE_DIR"
+          mkdir -p "$SMOKE_DIR"
+          ditto -x -k "$ZIP" "$SMOKE_DIR"
+          SAPP="$SMOKE_DIR/First Light.app"
+          if [ ! -d "$SAPP" ]; then
+            echo "::error::$ZIP does not unpack to First Light.app."
+            ls -la "$SMOKE_DIR" || true
+            exit 1
+          fi
+          Scripts/smoke-launch.sh "$SAPP"
+          rm -rf "$SMOKE_DIR"
 
       - name: Upload to the draft release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3

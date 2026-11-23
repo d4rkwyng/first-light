@@ -64,9 +64,9 @@ struct GalleryView: View {
                     .keyboardShortcut(.defaultAction)
             }
 
-            if let url = Bundle.module.url(forResource: photo.file,
-                                           withExtension: "jpg",
-                                           subdirectory: "Resources/Gallery"),
+            if let url = FirstLightResources.bundle.url(forResource: photo.file,
+                                                        withExtension: "jpg",
+                                                        subdirectory: "Resources/Gallery"),
                let nsImage = NSImage(contentsOf: url) {
                 Image(nsImage: nsImage)
                     .resizable()

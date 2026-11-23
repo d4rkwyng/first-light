@@ -93,14 +93,14 @@ enum TapeLibrary {
     ]
 
     static func basicSource(_ file: String) -> String? {
-        guard let url = Bundle.module.url(forResource: file, withExtension: "bas.txt",
-                                          subdirectory: "Resources/Tapes") else { return nil }
+        guard let url = FirstLightResources.bundle.url(forResource: file, withExtension: "bas.txt",
+                                                       subdirectory: "Resources/Tapes") else { return nil }
         return try? String(contentsOf: url, encoding: .utf8)
     }
 
     static func binary(_ file: String) -> [UInt8]? {
-        guard let url = Bundle.module.url(forResource: file, withExtension: "bin",
-                                          subdirectory: "Resources/Tapes") else { return nil }
+        guard let url = FirstLightResources.bundle.url(forResource: file, withExtension: "bin",
+                                                       subdirectory: "Resources/Tapes") else { return nil }
         return (try? Data(contentsOf: url)).map([UInt8].init)
     }
 }
