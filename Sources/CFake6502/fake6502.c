@@ -208,7 +208,11 @@ void reset6502() {
     x = 0;
     y = 0;
     sp = 0xFD;
-    status |= FLAG_CONSTANT;
+    /* RESET sets I (interrupts masked until the code says otherwise). D is
+       undefined after RESET on the NMOS part (the 65C02 clears it); clear it
+       so a program that left decimal mode on can't leak BCD arithmetic into
+       whatever runs next. Stock fake6502 only set the constant bit. */
+    status = (uint8_t)((status | FLAG_CONSTANT | FLAG_INTERRUPT) & ~FLAG_DECIMAL);
 }
 
 

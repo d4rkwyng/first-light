@@ -85,6 +85,28 @@ func runUntil(_ machine: Apple1, contains needle: String,
         #expect(m.peek(0x18) == 0x29)
     }
 
+    @Test func resetClearsDecimalAndSetsInterruptDisable() throws {
+        // The bug: reset6502() only OR-ed in the constant bit, so a program
+        // that ran SED left decimal mode on across ⌘R, and I was never set.
+        let m = try Apple1()
+        runUntil(m, contains: "\\", maxCycles: 1_000_000)
+        m.load([0xF8, 0x58, 0x4C, 0x02, 0x03], at: 0x0300) // SED; CLI; JMP $0302
+        m.type("300R\n")
+        m.run(cycles: 200_000)
+        let before = m.registers.status
+        #expect(before & 0x08 != 0, "program left D set")
+        #expect(before & 0x04 == 0, "program left I clear")
+        m.reset()
+        let after = m.registers.status
+        #expect(after & 0x08 == 0, "RESET must clear D")
+        #expect(after & 0x04 != 0, "RESET must set I")
+        #expect(m.pc == 0xFF00)
+        // ...and the monitor still works after the reset.
+        runUntil(m, contains: "\\", maxCycles: 1_000_000)
+        m.type("FF00\n")
+        #expect(runUntil(m, contains: "FF00: D8", maxCycles: 2_000_000))
+    }
+
     @Test func integerBASICBootsAndRunsAProgram() throws {
         let m = try Apple1()
         m.load(try ROM.integerBASIC(), at: 0xE000)
