@@ -43,6 +43,7 @@ enum TapeDecoder {
         var prev: Float?
         var base = 0 // absolute frame index of the chunk's first sample
         while file.framePosition < file.length {
+            try Task.checkCancellation() // STOP/RESET/another tape: quit early
             try file.read(into: buffer, frameCount: chunkFrames)
             let n = Int(buffer.frameLength)
             guard n > 0, let data = buffer.floatChannelData?[0] else { break }

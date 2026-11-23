@@ -1002,15 +1002,21 @@ final class MachineController {
             // a real tape recording: decode the FSK back into bytes — off the
             // main thread, since a long recording takes a while
             let generation = customDecodeGeneration
+            let decode = Task.detached(priority: .userInitiated) {
+                let accessing = url.startAccessingSecurityScopedResource()
+                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                return Result {
+                    try TapeDecoder.decode(url: url,
+                                           maxBytes: MachineController.maxCustomTapeBytes)
+                }
+            }
             customDecode = Task { [weak self] in
-                let result = await Task.detached(priority: .userInitiated) {
-                    let accessing = url.startAccessingSecurityScopedResource()
-                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                    return Result {
-                        try TapeDecoder.decode(url: url,
-                                               maxBytes: MachineController.maxCustomTapeBytes)
-                    }
-                }.value
+                // cancelling the load stops the decode itself, not just its result
+                let result = await withTaskCancellationHandler {
+                    await decode.value
+                } onCancel: {
+                    decode.cancel()
+                }
                 // cancelled, or superseded by another load, while decoding
                 guard let self, !Task.isCancelled,
                       generation == self.customDecodeGeneration else { return }

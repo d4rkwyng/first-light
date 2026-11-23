@@ -157,11 +157,13 @@ final class SoundEngine {
     }
 
     /// Render phases to samples. Pure, so it runs off the main actor.
+    /// Returns [] if the calling task is cancelled part-way.
     nonisolated static func tapeSamples<C: Collection<Double>>(phases: C) -> [Float] {
         var samples: [Float] = []
         samples.reserveCapacity(phases.reduce(0) { $0 + sampleCount(of: $1) } + 16)
         var high = true
-        for phase in phases {
+        for (index, phase) in phases.enumerated() {
+            if index & 0xFFF == 0, Task.isCancelled { return [] }
             let n = sampleCount(of: phase)
             for i in 0..<n {
                 let edge = min(1.0, Double(min(i, n - i)) / 6.0)
@@ -231,10 +233,16 @@ final class SoundEngine {
         }
         let generation = tapeGeneration
         let toRender = Array(played)
+        let render = Task.detached(priority: .userInitiated) {
+            SoundEngine.tapeSamples(phases: toRender)
+        }
         tapeSynth = Task { [weak self] in
-            let samples = await Task.detached(priority: .userInitiated) {
-                SoundEngine.tapeSamples(phases: toRender)
-            }.value
+            // a stopped/superseded load stops the render too
+            let samples = await withTaskCancellationHandler {
+                await render.value
+            } onCancel: {
+                render.cancel()
+            }
             guard let self, !Task.isCancelled,
                   generation == self.tapeGeneration,
                   self.engineReady(),

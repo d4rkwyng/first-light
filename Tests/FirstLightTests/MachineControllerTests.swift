@@ -430,4 +430,25 @@ struct MachineControllerTests {
             #expect(!c.tapeBusy)
         }
     }
+
+    @Test func cancelledDecodeAndRenderStopWorking() async throws {
+        // Codex round 5: cancelling only suppressed the result; the detached
+        // decode/render ran to completion. Both now stop when cancelled.
+        let wav = tempURL("cancel.wav")
+        try makeController().sound.writeTapeWAV(bytes: [0xEA, 0xEA], to: wav)
+        let decode = Task.detached { () throws -> [UInt8] in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try TapeDecoder.decode(url: wav)
+        }
+        await #expect(throws: CancellationError.self) { try await decode.value }
+
+        let phases = TapeEncoding.phases(bytes: [UInt8](repeating: 0x55, count: 4096),
+                                         leaderSeconds: 6)
+        let render = Task.detached { () -> Int in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return SoundEngine.tapeSamples(phases: phases).count
+        }
+        #expect(await render.value == 0)
+        #expect(!SoundEngine.tapeSamples(phases: phases).isEmpty, "uncancelled renders fully")
+    }
 }
