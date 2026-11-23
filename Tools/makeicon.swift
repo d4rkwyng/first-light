@@ -12,9 +12,9 @@
 //
 //   swift Tools/makeicon.swift [path/to/charrom2513.bin]
 //
-// Writes dist/AppIcon.iconset (build-app.sh stamps its 1024 on dev builds),
-// docs/icon.png (512), and Sources/FirstLight/Resources/AppIcon.icns via
-// iconutil. The renderer below is the round-13 makeicon13.swift renderer,
+// Writes dist/AppIcon.iconset, docs/icon.png (512), and
+// Sources/FirstLight/Resources/AppIcon.icns via iconutil. Commit the .icns:
+// build-app.sh bundles it and stamps it on dev builds. The renderer below is the round-13 makeicon13.swift renderer,
 // unchanged apart from this header, the default ROM path and the variant list.
 import AppKit
 import ImageIO
