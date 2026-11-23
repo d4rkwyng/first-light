@@ -21,6 +21,10 @@ final class SoundEngine {
     var persistentHum = false
     private var humRamp: Task<Void, Never>?
     private var tapeRamp: Task<Void, Never>?
+    private var tapeSynth: Task<Void, Never>?
+    /// Bumped by every tapePlay/tapeStop so audio still being synthesized
+    /// for a cancelled load is never scheduled.
+    private var tapeGeneration = 0
 
     init() {
         format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
@@ -110,9 +114,18 @@ final class SoundEngine {
         return buffer
     }
 
+    /// Start the engine if needed; false if it can't run (no output device,
+    /// a route change it couldn't recover from). AVAudioPlayerNode.play() on
+    /// a stopped engine raises an Objective-C exception Swift can't catch,
+    /// so every play() must be gated on this.
+    private func engineReady() -> Bool {
+        if engine.isRunning { return true }
+        do { try engine.start() } catch { return false }
+        return engine.isRunning
+    }
+
     private func play(_ name: String) {
-        guard enabled, let buffer = buffers[name] else { return }
-        if !engine.isRunning { try? engine.start() }
+        guard enabled, let buffer = buffers[name], engineReady() else { return }
         fx.scheduleBuffer(buffer, at: nil)
         fx.play()
     }
@@ -127,38 +140,62 @@ final class SoundEngine {
     func tapeLoad() { play("fsk") }
 
     /// T1: bit-true ACI audio. The waveform is generated from the
-    /// tape's ACTUAL BYTES per the real encoding — 1 kHz cycles for 0,
-    /// 2 kHz for 1, MSB first, preceded by the asymmetric-cycle leader.
-    /// Returns the audio duration in seconds.
-    /// (SB-Projects ACI doc: leader cycle ~565+455 µs; data "1" = one
-    /// 2 kHz cycle ~500 µs, "0" = one 1 kHz cycle ~1000 µs.)
-    func makeTapeAudio(bytes: [UInt8], leaderSeconds: Double) -> (AVAudioPCMBuffer, Double) {
-        let rate = 44100.0
-        let phases = TapeEncoding.phases(bytes: bytes,
-                                         leaderSeconds: leaderSeconds)
+    /// tape's ACTUAL BYTES per the real encoding — 1 kHz cycles for 1,
+    /// 2 kHz for 0 (the ROM reader's polarity, see TapeEncoding), MSB
+    /// first, preceded by the asymmetric-cycle leader.
+    /// (SB-Projects ACI doc: leader cycle ~565+455 µs.)
+    nonisolated static let tapeRate = 44100.0
+
+    /// Samples per phase, exactly as `tapeSamples` renders them.
+    nonisolated private static func sampleCount(of phase: Double) -> Int {
+        Int(tapeRate * phase / 1_000_000)
+    }
+
+    /// Length in seconds of the rendered phases, without rendering them.
+    nonisolated static func tapeDuration<C: Collection<Double>>(phases: C) -> Double {
+        Double(phases.reduce(0) { $0 + sampleCount(of: $1) }) / tapeRate
+    }
+
+    /// Render phases to samples. Pure, so it runs off the main actor.
+    /// Returns [] if the calling task is cancelled part-way.
+    nonisolated static func tapeSamples<C: Collection<Double>>(phases: C) -> [Float] {
         var samples: [Float] = []
-        samples.reserveCapacity(phases.reduce(0) { $0 + Int(rate * $1 / 1_000_000) } + 16)
+        samples.reserveCapacity(phases.reduce(0) { $0 + sampleCount(of: $1) } + 16)
         var high = true
-        for phase in phases {
-            let n = Int(rate * phase / 1_000_000)
+        for (index, phase) in phases.enumerated() {
+            if index & 0xFFF == 0, Task.isCancelled { return [] }
+            let n = sampleCount(of: phase)
             for i in 0..<n {
                 let edge = min(1.0, Double(min(i, n - i)) / 6.0)
                 samples.append(Float((high ? 1.0 : -1.0) * 0.32 * edge))
             }
             high.toggle()
         }
-        let buffer = AVAudioPCMBuffer(pcmFormat: format,
-                                      frameCapacity: AVAudioFrameCount(samples.count))!
-        buffer.frameLength = AVAudioFrameCount(samples.count)
-        let data = buffer.floatChannelData![0]
-        for (i, v) in samples.enumerated() { data[i] = v }
-        return (buffer, Double(samples.count) / rate)
+        return samples
     }
+
+    /// Copy samples into a buffer; nil if it can't be allocated.
+    private func makeBuffer(_ samples: [Float]) -> AVAudioPCMBuffer? {
+        guard !samples.isEmpty, samples.count <= Int(UInt32.max),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format,
+                  frameCapacity: AVAudioFrameCount(samples.count)),
+              let data = buffer.floatChannelData?[0]
+        else { return nil }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { src in
+            data.update(from: src.baseAddress!, count: samples.count)
+        }
+        return buffer
+    }
+
+    struct TapeAudioError: Error {}
 
     /// Write bit-true tape audio to a .wav file (P1: tape save). The
     /// result is the same encoding the real ACI put on cassettes.
     func writeTapeWAV(bytes: [UInt8], to url: URL) throws {
-        let (buffer, _) = makeTapeAudio(bytes: bytes, leaderSeconds: 10)
+        let phases = TapeEncoding.phases(bytes: bytes, leaderSeconds: 10)
+        guard let buffer = makeBuffer(Self.tapeSamples(phases: phases))
+        else { throw TapeAudioError() }
         let file = try AVAudioFile(forWriting: url, settings: [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: 44100.0,
@@ -172,31 +209,70 @@ final class SoundEngine {
     /// Play bit-true tape audio for a load. In authentic mode the whole
     /// recording plays (fading to background after a few seconds); in
     /// showcase mode just the first moments of the same real waveform.
+    /// Returns the full recording's duration at once; the samples are
+    /// rendered off the main actor and start playing when ready.
     func tapePlay(bytes: [UInt8], authentic: Bool) -> Double {
         // authentic leader matches the bus playback exactly — the
         // sound IS what the machine hears
-        let (buffer, duration) = makeTapeAudio(
+        let phases = TapeEncoding.phases(
             bytes: bytes, leaderSeconds: authentic ? 6.0 : 0.6)
-        guard enabled else { return duration }
-        if !engine.isRunning { try? engine.start() }
+        let duration = Self.tapeDuration(phases: phases)
+        tapeGeneration += 1
+        tapeSynth?.cancel()
         tapeRamp?.cancel()
-        tape.volume = 0.5
-        tape.scheduleBuffer(buffer, at: nil)
-        tape.play()
-        if authentic {
-            tapeRamp = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(4))
-                for step in 0..<25 {
-                    guard !Task.isCancelled else { return }
-                    self?.tape.volume = 0.5 - (0.5 - 0.08) * Float(step + 1) / 25
-                    try? await Task.sleep(for: .milliseconds(120))
-                }
+        guard enabled else { return duration }
+        // A showcase load is over in ~2.8 s: render only what it plays.
+        var played = phases[...]
+        if !authentic {
+            var seconds = 0.0, count = 0
+            while count < phases.count, seconds < Self.showcaseSeconds {
+                seconds += phases[count] / 1_000_000
+                count += 1
             }
+            played = phases.prefix(count)
+        }
+        let generation = tapeGeneration
+        let toRender = Array(played)
+        let render = Task.detached(priority: .userInitiated) {
+            SoundEngine.tapeSamples(phases: toRender)
+        }
+        tapeSynth = Task { [weak self] in
+            // a stopped/superseded load stops the render too
+            let samples = await withTaskCancellationHandler {
+                await render.value
+            } onCancel: {
+                render.cancel()
+            }
+            guard let self, !Task.isCancelled,
+                  generation == self.tapeGeneration,
+                  self.engineReady(),
+                  let buffer = self.makeBuffer(samples) else { return }
+            self.startTape(buffer, fadeAfterAWhile: authentic)
         }
         return duration
     }
 
+    private func startTape(_ buffer: AVAudioPCMBuffer, fadeAfterAWhile: Bool) {
+        tape.volume = 0.5
+        tape.scheduleBuffer(buffer, at: nil)
+        tape.play()
+        guard fadeAfterAWhile else { return }
+        tapeRamp = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            for step in 0..<25 {
+                guard !Task.isCancelled else { return }
+                self?.tape.volume = 0.5 - (0.5 - 0.08) * Float(step + 1) / 25
+                try? await Task.sleep(for: .milliseconds(120))
+            }
+        }
+    }
+
+    /// Showcase loads finish after 170 frames (~2.8 s); a little slack.
+    static let showcaseSeconds = 4.0
+
     func tapeStop() {
+        tapeGeneration += 1
+        tapeSynth?.cancel()
         tapeRamp?.cancel()
         tape.stop()
     }
@@ -206,8 +282,7 @@ final class SoundEngine {
     func flybackSet(_ on: Bool) {
         guard on != flybackRunning else { return }
         flybackRunning = on
-        if on, enabled, let loop = buffers["flybackLoop"] {
-            if !engine.isRunning { try? engine.start() }
+        if on, enabled, let loop = buffers["flybackLoop"], engineReady() {
             flyback.scheduleBuffer(loop, at: nil, options: .loops)
             flyback.play()
         } else {
@@ -220,8 +295,7 @@ final class SoundEngine {
 
     func powerOn() {
         play("thunk")
-        guard enabled, let loop = buffers["humLoop"] else { return }
-        if !engine.isRunning { try? engine.start() }
+        guard enabled, let loop = buffers["humLoop"], engineReady() else { return }
         humRamp?.cancel()
         hum.volume = 0.16
         hum.scheduleBuffer(loop, at: nil, options: .loops)

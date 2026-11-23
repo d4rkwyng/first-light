@@ -154,6 +154,7 @@ final class MachineController {
     private(set) var insertedTapeName: String?
 
     func ejectTape() {
+        cancelCustomDecode()
         insertedTapeName = nil
         lastTape = nil
         lastCustomLoad = nil
@@ -181,7 +182,7 @@ final class MachineController {
     /// STOP: kill a load mid-transfer — the bytes never arrive,
     /// exactly like stopping a real tape too early.
     func stopTape() {
-        guard nowLoading != nil else { return }
+        guard nowLoading != nil || customDecode != nil else { return }
         cancelInFlightLoad() // also flushes the queued run command (L3)
         sound.chipEject()
     }
@@ -228,6 +229,7 @@ final class MachineController {
     /// ROM with typed commands, and run the program when the tape ends.
     private func stageAuthenticACILoad(name: String, bytes: [UInt8],
                                        load: Int, run: String) {
+        cancelCustomDecode() // this load supersedes a recording still decoding
         // Load the machine AS-IS: a cassette can't re-seat chips you pulled
         // (if essentials are missing it fails like the real hardware). The
         // connects below are just plugging cables — power, display, the ACI.
@@ -257,6 +259,7 @@ final class MachineController {
 
     private func stageLoad(name: String, bytes: [UInt8],
                            _ action: @escaping () -> Void) {
+        cancelCustomDecode() // a newer load supersedes a recording still decoding
         // Load the machine AS-IS — don't re-seat chips the user pulled.
         connect(.power); connect(.display); connect(.keyboard)
         connect(.aciCard)
@@ -400,6 +403,7 @@ final class MachineController {
     /// Abort any cassette load in progress and flush the autotype queue —
     /// the shared cleanup behind reset/power-off/STOP/processor-swap.
     private func cancelInFlightLoad() {
+        cancelCustomDecode()
         autoTypeQueue.removeAll()
         if nowLoading != nil { sound.tapeStop() }
         nowLoading = nil
@@ -451,6 +455,15 @@ final class MachineController {
     }
 
     func nextFact() { factOffset += 1 }
+
+    /// Which fact the info bar shows. `factOffset` goes negative when the
+    /// user steps back, and Swift's `%` keeps the dividend's sign, so a
+    /// plain `% count` could index -1 and trap. Always lands in 0..<count.
+    static func factIndex(frame: Int, offset: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        let r = (frame / 900 + offset) % count
+        return r < 0 ? r + count : r
+    }
 
     /// Bumped only when the CRT content (or cursor blink) changes, so the
     /// terminal canvas doesn't redraw 60 times a second for nothing.
@@ -513,21 +526,32 @@ final class MachineController {
 
     func start() {
         guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
+        // .common, not just .default: otherwise the machine, the cursor and
+        // the deck freeze while a menu is open or a window/knob is dragged,
+        // and the tape audio (which keeps playing) drifts from the load.
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { _ in
             MainActor.assumeIsolated { self.tick() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // NSEvent is not Sendable; lift out the plain values first.
-            // Held keys do NOT repeat — the Datanetics keyboard had no
-            // auto-repeat, so neither do we.
-            if event.isARepeat { return nil }
             let keyCode = event.keyCode
             let characters = event.characters
             let command = event.modifierFlags.contains(.command)
+            let isRepeat = event.isARepeat
             let consumed = MainActor.assumeIsolated { () -> Bool in
-                guard let self, !self.uiHasKeyboard else { return false }
+                guard let self else { return false }
+                // A text field (the Scope's hex address, the palette, a save
+                // panel's name) or any modal owns its typing — and its key
+                // repeats. Only what is left goes to the Apple-1.
+                let responder = NSApp.keyWindow?.firstResponder
+                guard MachineController.apple1MayTakeKeys(
+                    uiHasKeyboard: self.uiHasKeyboard,
+                    modalUp: NSApp.modalWindow != nil,
+                    textInputFocused: responder is NSText) else { return false }
                 return self.handle(keyCode: keyCode, characters: characters,
-                                   command: command)
+                                   command: command, isRepeat: isRepeat)
             }
             return consumed ? nil : event
         }
@@ -839,6 +863,7 @@ final class MachineController {
     /// and runs it.
     func insert(_ tape: Tape) {
         ensure6502()
+        cancelCustomDecode() // the user picked another tape: drop a pending decode
         if blockedByMissingParts(tape) {
             // keep it "in the deck" so PLAY retries once you seat the parts
             lastTape = tape
@@ -941,21 +966,90 @@ final class MachineController {
     /// BASIC source (numbered lines — typed into BASIC and RUN), or a
     /// raw .bin (loads at $0300, or at the address in a "name@0280.bin"
     /// style filename; runs from the load address).
+    /// The Apple-1 addresses 64 KB, so no real tape is bigger. Anything
+    /// larger is refused up front: synthesizing its FSK audio used to need
+    /// ~265 samples per byte (about 1 GB for a 1 MB file) on the main thread.
+    nonisolated static let maxCustomTapeBytes = 0x10000
+
+    /// Shown (and cleared) by the bench when a custom tape can't be loaded.
+    var customTapeError: String?
+
+    /// A tape recording still being decoded off the main thread. Anything
+    /// that cancels or supersedes a load bumps the generation, so a decode
+    /// that finishes late never stages over what the user did since.
+    private(set) var customDecode: Task<Void, Never>?
+    private var customDecodeGeneration = 0
+
+    /// A load is in flight or a recording is still decoding: STOP applies.
+    var tapeBusy: Bool { nowLoading != nil || customDecode != nil }
+
+    private func cancelCustomDecode() {
+        customDecodeGeneration += 1
+        customDecode?.cancel()
+        customDecode = nil
+    }
+    /// Shown (and cleared) by the bench when recording to disk fails.
+    var recordError: String?
+
     func insertCustom(url: URL) {
         ensure6502()
+        cancelCustomDecode()
+        customTapeError = nil
         let title = url.deletingPathExtension().lastPathComponent
+        let file = url.lastPathComponent
         let ext = url.pathExtension.lowercased()
         if ["wav", "aif", "aiff", "mp3", "m4a"].contains(ext) {
-            // a real tape recording: decode the FSK back into bytes
-            guard let bytes = try? TapeDecoder.decode(url: url) else { return }
-            lastTape = nil
-            lastCustomLoad = (title, Data(bytes), true)
-            stageLoad(name: title, bytes: bytes) { [weak self] in
-                self?.performCustom(name: title, data: Data(bytes), isBin: true)
+            // a real tape recording: decode the FSK back into bytes — off the
+            // main thread, since a long recording takes a while
+            let generation = customDecodeGeneration
+            let decode = Task.detached(priority: .userInitiated) {
+                let accessing = url.startAccessingSecurityScopedResource()
+                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                return Result {
+                    try TapeDecoder.decode(url: url,
+                                           maxBytes: MachineController.maxCustomTapeBytes)
+                }
+            }
+            customDecode = Task { [weak self] in
+                // cancelling the load stops the decode itself, not just its result
+                let result = await withTaskCancellationHandler {
+                    await decode.value
+                } onCancel: {
+                    decode.cancel()
+                }
+                // cancelled, or superseded by another load, while decoding
+                guard let self, !Task.isCancelled,
+                      generation == self.customDecodeGeneration else { return }
+                self.customDecode = nil
+                switch result {
+                case .success(let bytes):
+                    self.ensure6502()
+                    self.lastTape = nil
+                    self.lastCustomLoad = (title, Data(bytes), true)
+                    self.stageLoad(name: title, bytes: bytes) { [weak self] in
+                        self?.performCustom(name: title, data: Data(bytes), isBin: true)
+                    }
+                case .failure(let error):
+                    self.customTapeError = Self.describe(error, file: file)
+                }
             }
             return
         }
-        guard let data = try? Data(contentsOf: url) else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        if let size, size > Self.maxCustomTapeBytes {
+            customTapeError = Self.tooBig(file: file, bytes: size)
+            return
+        }
+        guard let data = try? Data(contentsOf: url) else {
+            customTapeError = "\(file) couldn't be read."
+            return
+        }
+        guard data.count <= Self.maxCustomTapeBytes else {
+            customTapeError = Self.tooBig(file: file, bytes: data.count)
+            return
+        }
         lastTape = nil
         lastCustomLoad = (title, data, ext == "bin")
         stageLoad(name: title, bytes: [UInt8](data)) { [weak self] in
@@ -964,10 +1058,32 @@ final class MachineController {
         }
     }
 
+    private static func tooBig(file: String, bytes: Int) -> String {
+        "\(file) is \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)). "
+            + "An Apple-1 tape holds at most 64 KB — the whole address space."
+    }
+
+    private static func describe(_ error: Error, file: String) -> String {
+        switch error as? TapeDecoder.DecodeError {
+        case .tooLong(let seconds)?:
+            return "\(file) runs \(seconds / 60) min \(seconds % 60) s. An Apple-1 tape "
+                + "recording can be at most \(Int(TapeDecoder.maxSeconds) / 60) minutes."
+        case .tooLarge(let bytes)?:
+            return tooBig(file: file, bytes: bytes)
+        case .noData?:
+            return "No Apple-1 tape data was found in \(file)."
+        default:
+            return "\(file) couldn't be read as a tape recording."
+        }
+    }
+
     private func performCustom(name: String, data: Data, isBin: Bool) {
         if isBin {
             var load: UInt16 = 0x0300
-            if let at = name.split(separator: "@").last,
+            // only a "name@0280" style name carries an address — "2048.bin"
+            // or "cafe.bin" is a title that happens to be hex, not $2048
+            let parts = name.split(separator: "@")
+            if parts.count >= 2, let at = parts.last,
                let parsed = UInt16(at, radix: 16) {
                 load = parsed
             }
@@ -1078,7 +1194,14 @@ final class MachineController {
         panel.nameFieldStringValue = "\(name).woz.txt"
         panel.allowedContentTypes = [.plainText]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        try? text.write(to: url, atomically: true, encoding: .utf8)
+        recordError = nil
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            // nothing was recorded: don't pretend otherwise
+            recordError = "\(url.lastPathComponent) couldn't be saved: \(error.localizedDescription)"
+            return
+        }
         // Only a single contiguous range round-trips faithfully as one .wav
         // (a flat stream has no addresses; no real tape concatenated two
         // non-contiguous ranges). Multi-range tapes keep just the .woz.txt,
@@ -1086,7 +1209,12 @@ final class MachineController {
         if ranges.count == 1 {
             let wavURL = url.deletingPathExtension().deletingPathExtension()
                 .appendingPathExtension("wav")
-            try? sound.writeTapeWAV(bytes: bytes, to: wavURL)
+            do {
+                try sound.writeTapeWAV(bytes: bytes, to: wavURL)
+            } catch {
+                recordError = "\(url.lastPathComponent) was saved, but \(wavURL.lastPathComponent) "
+                    + "couldn't be written: \(error.localizedDescription)"
+            }
         }
         sound.tapeLoad() // a little record-head chirp for the moment
         insertedTapeName = name.uppercased()
@@ -1126,6 +1254,11 @@ final class MachineController {
               state.machine.mem.count == 0x10000,
               state.machine.screen.count == Terminal.columns * Terminal.rows
         else { return false } // reject a corrupt/foreign file before touching live state
+        // A load or autotype still in flight belongs to the session being
+        // replaced: left alive, it would reset the restored machine a few
+        // frames later, deposit its tape over it and type the run command.
+        cancelInFlightLoad()
+        clearCrashState()
         placed = Set(state.placed.compactMap(ChipGroup.init(rawValue:)))
         connected = Set(state.connected.compactMap(Peripheral.init(rawValue:)))
         // Set the variant BEFORE restoring: the didSet resets/clears, then
@@ -1185,16 +1318,32 @@ final class MachineController {
 
     var typingHintActive: Bool { pulseFrame < typingHintUntil }
 
-    private func handle(keyCode: UInt16, characters: String?, command: Bool) -> Bool {
+    /// Whether a keyDown may reach the emulated keyboard at all. Sheets the
+    /// app knows about, any AppKit modal (save/open panels), and a focused
+    /// text view (NSTextView is the field editor behind every TextField)
+    /// keep their keys, including auto-repeat.
+    static func apple1MayTakeKeys(uiHasKeyboard: Bool, modalUp: Bool,
+                                  textInputFocused: Bool) -> Bool {
+        !uiHasKeyboard && !modalUp && !textInputFocused
+    }
+
+    /// Returns true if the Apple-1 consumed the key. Held keys do NOT
+    /// repeat on the Apple-1 — the Datanetics keyboard had no auto-repeat —
+    /// so a repeat of a key the machine would take is swallowed without
+    /// pressing it; repeats the machine wouldn't take pass through.
+    func handle(keyCode: UInt16, characters: String?, command: Bool,
+                isRepeat: Bool = false) -> Bool {
         if command { return false }
         // ESC in full-screen is purely the exit gesture — works even on a dark
         // tube, and never leaks a 0x1B line-cancel into a monitor input line.
         if keyCode == 53, fullScreenDisplay {
+            if isRepeat { return true }
             if frame - lastEscFrame < 35 { fullScreenDisplay = false }
             lastEscFrame = frame
             return true
         }
         guard powered, connected.contains(.keyboard) else {
+            if isRepeat { return false }
             // typing at a deaf machine: after a few keys, say why
             if frame - lastStrayFrame > 300 { strayKeys = 0 }
             strayKeys += 1
@@ -1206,6 +1355,7 @@ final class MachineController {
         // interleaving the two garbles the demo input line.
         if !autoTypeQueue.isEmpty { return true }
         if keyCode == 53 { // esc — Woz Monitor line cancel (full-screen handled above)
+            if isRepeat { return true }
             machine.press(0x1B)
             keyFlash = (0x1B, frame)
             sound.keyClick()
@@ -1213,6 +1363,11 @@ final class MachineController {
         }
         guard let scalar = characters?.uppercased().unicodeScalars.first,
               scalar.isASCII else { return false }
+        switch scalar.value {
+        case 0x0D, 0x03, 0x7F, 0x20...0x5F:
+            if isRepeat { return true } // no auto-repeat on the Apple-1
+        default: return false
+        }
         switch scalar.value {
         case 0x0D, 0x03: machine.press(0x0D)
         case 0x7F: machine.press(0x5F) // delete → "_", the Apple-1 rubout
@@ -1228,6 +1383,11 @@ final class MachineController {
 
     func reset() {
         guard powered else { return }
+        // A recording still decoding hasn't reached the deck yet: RESET drops
+        // it rather than letting it load over the fresh prompt. (A tape that
+        // is already playing keeps playing, as before.) Every internal caller
+        // runs after a decode finished or is itself a newer load.
+        cancelCustomDecode()
         clearCrashState()
         ranLoadedProgram = false // back at the bare monitor; re-arm crash detection
         machine.reset()
@@ -1239,6 +1399,7 @@ final class MachineController {
     /// or a runaway program.
     func loadBASIC() {
         ensure6502()
+        cancelCustomDecode() // ⌘B supersedes a recording still decoding
         guard powered, connected.contains(.aciCard), placed.contains(.ramX),
               let basic = try? ROM.integerBASIC() else { return }
         reset()

@@ -92,6 +92,8 @@ if (( RELEASE )); then
     # Distribution: hardened runtime + secure timestamp, then notarize.
     # No entitlements needed — no JIT, mic, or network.
     codesign --force --options runtime --timestamp --sign "$CODESIGN_ID" "$APP"
+    # Fail here, not at notarization, if the signature is incomplete.
+    codesign --verify --strict --verbose=2 "$APP"
 else
     codesign --force --deep --sign "${CODESIGN_ID:--}" "$APP"
 fi
@@ -119,7 +121,13 @@ if (( RELEASE )); then
     xcrun stapler staple "$APP"
     rm -f "$ZIP"
     ditto -c -k --keepParent "$APP" "$ZIP"
-    spctl -a -vv "$APP" && echo "notarized + stapled: $ZIP"
+    # A bare `spctl ... && echo` can't trip set -e: a rejected bundle would
+    # leave the zip in dist/ and exit 0. Fail loudly instead.
+    if ! spctl -a -vv "$APP"; then
+        echo "Gatekeeper rejected $APP — do not ship $ZIP" >&2
+        exit 1
+    fi
+    echo "notarized + stapled: $ZIP"
 fi
 
 if (( INSTALL )); then

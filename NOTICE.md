@@ -23,7 +23,7 @@ No ownership is claimed. If Apple Inc. objects to their inclusion, they will
 be removed promptly on request.
 
 The Integer BASIC image is the verified-good dump (the widely circulated copy
-with two corrupted bytes at $F2/$12 breaks input; ours is cross-checked
+with two corrupted bytes — $F2 where $12 belongs — breaks input; ours is cross-checked
 against the napple1 project's).
 
 ## Character generator
@@ -59,9 +59,11 @@ project, [Mike Willegal](https://willegal.net), and
 
 `Sources/CFake6502/` — **fake6502** v1.1 © 2011 Mike Chambers, released into
 the public domain ("but if you use it please do give credit" — credit given,
-gladly). Modified only to disable the NES quirk flag and to make decimal-mode
+gladly). Modified only to disable the NES quirk flag; to make decimal-mode
 (BCD) `ADC`/`SBC` actually store their BCD result — the stock code computed
-it and then overwrote it with the binary sum.
+it and then overwrote it with the binary sum — without the extra cycle the
+stock code charged (that cycle is 65C02 behaviour, not NMOS); and to have
+RESET set the I flag and clear D.
 
 ## Board fabrication data
 

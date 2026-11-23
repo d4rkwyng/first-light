@@ -39,8 +39,9 @@ struct ReferenceView: View {
                 ])
             }
             Text("Uppercase only. Delete prints _ (the screen can't erase — "
-                 + "the machine forgets the character anyway). The display "
-                 + "draws 60 characters a second and nothing can hurry it.")
+                 + "the machine forgets the character anyway). At the authentic "
+                 + "clock the display draws 60 characters a second; only the "
+                 + "Turbo speeds in the Machine menu hurry it, on purpose.")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
         }

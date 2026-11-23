@@ -85,6 +85,72 @@ func runUntil(_ machine: Apple1, contains needle: String,
         #expect(m.peek(0x18) == 0x29)
     }
 
+    @Test func decimalModeTakesNoExtraCycleOnNMOS() throws {
+        // The NMOS 6502 times ADC/SBC identically in binary and decimal mode
+        // (only the 65C02 adds a cycle). fake6502 charged one extra.
+        let m = try Apple1()
+        let program: [UInt8] = [
+            0xF8,             // SED
+            0x69, 0x01,       // ADC #$01   (decimal)
+            0xE9, 0x01,       // SBC #$01   (decimal)
+            0x65, 0x10,       // ADC $10    (decimal, zero page)
+            0xD8,             // CLD
+            0x69, 0x01,       // ADC #$01   (binary)
+            0xE9, 0x01,       // SBC #$01   (binary)
+            0x65, 0x10,       // ADC $10    (binary, zero page)
+        ]
+        m.load(program, at: 0x0300)
+        var snap = m.takeSnapshot()
+        snap.pc = 0x0300
+        m.restore(snap)
+        func step() -> UInt64 {
+            let t0 = m.totalCycles
+            m.run(cycles: 1) // exactly one instruction
+            return m.totalCycles - t0
+        }
+        let decimal = (0..<4).map { _ in step() }
+        let binary = (0..<4).map { _ in step() }
+        #expect(m.pc == 0x030E)
+        #expect(decimal == [2, 2, 2, 3])
+        #expect(binary == [2, 2, 2, 3])
+    }
+
+    @Test func pulledPIAPrintsNothing() throws {
+        // The bug: busWrite ignored piaInstalled, so with the PIA pulled the
+        // monitor's STA DSP still reached the terminal and "\\" appeared.
+        let m = try Apple1()
+        m.piaInstalled = false
+        m.reset()
+        m.run(cycles: 1_000_000)
+        #expect(m.terminal.transcript.isEmpty)
+        // Seat it again and the prompt comes back.
+        m.piaInstalled = true
+        m.reset()
+        #expect(runUntil(m, contains: "\\", maxCycles: 1_000_000))
+    }
+
+    @Test func resetClearsDecimalAndSetsInterruptDisable() throws {
+        // The bug: reset6502() only OR-ed in the constant bit, so a program
+        // that ran SED left decimal mode on across ⌘R, and I was never set.
+        let m = try Apple1()
+        runUntil(m, contains: "\\", maxCycles: 1_000_000)
+        m.load([0xF8, 0x58, 0x4C, 0x02, 0x03], at: 0x0300) // SED; CLI; JMP $0302
+        m.type("300R\n")
+        m.run(cycles: 200_000)
+        let before = m.registers.status
+        #expect(before & 0x08 != 0, "program left D set")
+        #expect(before & 0x04 == 0, "program left I clear")
+        m.reset()
+        let after = m.registers.status
+        #expect(after & 0x08 == 0, "RESET must clear D")
+        #expect(after & 0x04 != 0, "RESET must set I")
+        #expect(m.pc == 0xFF00)
+        // ...and the monitor still works after the reset.
+        runUntil(m, contains: "\\", maxCycles: 1_000_000)
+        m.type("FF00\n")
+        #expect(runUntil(m, contains: "FF00: D8", maxCycles: 2_000_000))
+    }
+
     @Test func integerBASICBootsAndRunsAProgram() throws {
         let m = try Apple1()
         m.load(try ROM.integerBASIC(), at: 0xE000)
@@ -243,12 +309,39 @@ func runUntil(_ machine: Apple1, contains needle: String,
         // A user tape can name any load address ("x@FFFE.bin", "FFFC: ..."),
         // so a deposit that runs off the end of the address space must drop
         // the overflow rather than trap.
+        // $FFFE-$FFFF is now write-protected Woz Monitor ROM (see
+        // loadNeverOverwritesTheWozMonitorROM), so the deposit must leave the
+        // ROM's own bytes there rather than 0x11/0x22.
         let m = try Apple1()
+        let rom = try ROM.wozmon()
         m.load([0x11, 0x22, 0x33, 0x44], at: 0xFFFE)
-        #expect(m.peek(0xFFFE) == 0x11)
-        #expect(m.peek(0xFFFF) == 0x22)
+        #expect(m.peek(0xFFFE) == rom[0xFE])
+        #expect(m.peek(0xFFFF) == rom[0xFF])
         #expect(m.peek(0x0000) == 0x00 && m.peek(0x0001) == 0x00,
                 "overflow must not wrap into zero page")
+    }
+
+    @Test func loadNeverOverwritesTheWozMonitorROM() throws {
+        // A "name@FF00.bin" tape or a "FF00: ..." line used to replace the
+        // monitor for the rest of the session (reset/power-up never restore
+        // it). ROM writes are now ignored; RAM below the ROM still loads.
+        let m = try Apple1()
+        let rom = try ROM.wozmon()
+        m.load([UInt8](repeating: 0xEA, count: 0x200), at: 0xFE00)
+        for i in 0..<256 {
+            #expect(m.peek(UInt16(0xFF00 + i)) == rom[i])
+        }
+        #expect(m.peek(0xFEFF) == 0xEA, "bytes below the ROM still land")
+        // A snapshot whose ROM window was altered can't corrupt it either.
+        var snap = m.takeSnapshot()
+        var bytes = [UInt8](snap.mem)
+        bytes[0xFF00] = 0x00
+        snap.mem = Data(bytes)
+        m.restore(snap)
+        #expect(m.peek(0xFF00) == rom[0])
+        // ...and the monitor still boots.
+        m.reset()
+        #expect(runUntil(m, contains: "\\", maxCycles: 1_000_000))
     }
 
     @Test func busPeekMatchesBusReadWhilePIADDRSelected() throws {

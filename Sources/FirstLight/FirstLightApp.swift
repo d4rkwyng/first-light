@@ -12,7 +12,7 @@ enum AboutPanel {
     static let repo = URL(string: "https://github.com/d4rkwyng/first-light")!
     static let newIssue = URL(string: "https://github.com/d4rkwyng/first-light/issues/new")!
 
-    static func show() {
+    @MainActor static func show() {
         let body: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11),
             .foregroundColor: NSColor.secondaryLabelColor,

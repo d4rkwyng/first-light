@@ -2,7 +2,7 @@ import Foundation
 
 /// The ACI tape format, as one list of phase durations (µs). Strictly
 /// alternating polarity — the leader's asymmetric cycles, the short
-/// sync phase, then two phases per bit (1 = 2 kHz, 0 = 1 kHz), MSB
+/// sync phase, then two phases per bit (1 = 1 kHz, 0 = 2 kHz), MSB
 /// first. Shared by the audio synthesizer (SoundEngine) and the
 /// cycle-timed bus playback (Apple1.armTape) so a tape sounds and
 /// LOADS identically.

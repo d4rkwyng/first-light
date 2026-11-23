@@ -160,10 +160,24 @@ struct ContentView: View {
                                            set: { controller.customTapeRequested = $0 }),
                       allowedContentTypes: [.plainText, .data, .audio]) { result in
             if case .success(let url) = result {
-                let accessing = url.startAccessingSecurityScopedResource()
+                // insertCustom opens the security scope around its own reads
+                // (audio is decoded asynchronously)
                 controller.insertCustom(url: url)
-                if accessing { url.stopAccessingSecurityScopedResource() }
             }
+        }
+        .alert("Can't load that tape",
+               isPresented: Binding(get: { controller.customTapeError != nil },
+                                    set: { if !$0 { controller.customTapeError = nil } })) {
+            Button("OK", role: .cancel) { controller.customTapeError = nil }
+        } message: {
+            Text(controller.customTapeError ?? "")
+        }
+        .alert("Recording failed",
+               isPresented: Binding(get: { controller.recordError != nil },
+                                    set: { if !$0 { controller.recordError = nil } })) {
+            Button("OK", role: .cancel) { controller.recordError = nil }
+        } message: {
+            Text(controller.recordError ?? "")
         }
         .sheet(isPresented: Binding(get: { controller.aciInspectRequested },
                                     set: { controller.aciInspectRequested = $0 })) {
@@ -1204,7 +1218,9 @@ struct InfoBar: View {
             return ("Try FF00.FFFF to read the ROM. Add the cassette interface to load BASIC (⌘B).", false)
         }
         // Fully assembled: rotate lore every 15 seconds; arrow to skip.
-        let index = (controller.pulseFrame / 900 + controller.factOffset) % Self.facts.count
+        let index = MachineController.factIndex(frame: controller.pulseFrame,
+                                                offset: controller.factOffset,
+                                                count: Self.facts.count)
         let (year, fact) = Self.facts[index]
         return ("\(year) — \(fact)", true)
     }

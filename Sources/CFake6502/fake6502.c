@@ -208,7 +208,11 @@ void reset6502() {
     x = 0;
     y = 0;
     sp = 0xFD;
-    status |= FLAG_CONSTANT;
+    /* RESET sets I (interrupts masked until the code says otherwise). D is
+       undefined after RESET on the NMOS part (the 65C02 clears it); clear it
+       so a program that left decimal mode on can't leak BCD arithmetic into
+       whatever runs next. Stock fake6502 only set the constant bit. */
+    status = (uint8_t)((status | FLAG_CONSTANT | FLAG_INTERRUPT) & ~FLAG_DECIMAL);
 }
 
 
@@ -345,8 +349,8 @@ static void adc() {
         if (hi > 0x09) hi += 0x06;
         if (hi > 0x0F) setcarry(); else clearcarry();
         result = (uint16_t)(((hi << 4) | (lo & 0x0F)) & 0xFF);
-        
-        clockticks6502++;
+        /* no extra cycle: decimal ADC/SBC take one more cycle only on the
+           65C02; the Apple-1's NMOS 6502 times them like binary mode. */
     }
     #endif
    
@@ -719,8 +723,8 @@ static void sbc() {
         if (lo < 0) { lo -= 0x06; hi--; }
         if (hi < 0) hi -= 0x06;
         result = (uint16_t)((((uint16_t)hi << 4) | ((uint16_t)lo & 0x0F)) & 0xFF);
-        
-        clockticks6502++;
+        /* no extra cycle: decimal ADC/SBC take one more cycle only on the
+           65C02; the Apple-1's NMOS 6502 times them like binary mode. */
     }
     #endif
    
