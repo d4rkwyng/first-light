@@ -82,14 +82,19 @@ public enum Apple1CoreResources {
     /// SwiftPM names a target's resource bundle `<package>_<target>`.
     public static let bundleName = "first-light_Apple1Core"
 
-    public static let bundle: Bundle = {
+    /// The bundle as found by `ResourceBundleLocator`, or nil. Never traps
+    /// and never consults `Bundle.module` (`--resource-check` uses this, so
+    /// a locator miss is reported instead of hidden by the fallback).
+    public static let located: Bundle? = {
         let finder = Bundle(for: Apple1CoreBundleFinder.self)
         return ResourceBundleLocator.locate(
             bundleName,
             extra: [finder.resourceURL, finder.bundleURL.deletingLastPathComponent()])
-            // swift test / swift run only: the bundle is in .build, and the
-            // generated accessor knows that absolute path. Never reached in a
-            // packaged app whose bundle is in Contents/Resources.
-            ?? Bundle.module
     }()
+
+    public static let bundle: Bundle = located
+        // swift test / swift run only: the bundle is in .build, and the
+        // generated accessor knows that absolute path. Never reached in a
+        // packaged app whose bundle is in Contents/Resources.
+        ?? Bundle.module
 }

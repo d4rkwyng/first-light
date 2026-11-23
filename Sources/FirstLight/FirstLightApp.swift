@@ -47,6 +47,13 @@ struct FirstLightApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        // First, before anything loads a resource: MachineController() reads
+        // the Woz Monitor ROM, and in a broken package that traps. So the
+        // controller is created below, after this check, not as a property
+        // initializer (those run before init's body).
+        if CommandLine.arguments.contains("--resource-check") {
+            ResourceCheck.run()
+        }
         if CommandLine.arguments.contains("--verify-tapes") {
             TapeVerifier.run()
         }
@@ -66,9 +73,10 @@ struct FirstLightApp: App {
         if CommandLine.arguments.contains("--zp-experiment") {
             ZPExperiment.run()
         }
+        _controller = ViewState(initialValue: MachineController())
     }
 
-    @ViewState private var controller = MachineController()
+    @ViewState private var controller: MachineController
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
