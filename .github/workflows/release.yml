@@ -76,10 +76,97 @@ jobs:
       - name: Tag format
         run: |
           set -euo pipefail
-          if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
             echo "::error::Tag must look like vX.Y.Z or vX.Y.Z-suffix (got: $TAG)"
             exit 1
           fi
+
+      # Before checkout and long before notarization, so a tag that already
+      # has a published release (or a draft that already has the zip) fails
+      # in seconds. A rerun may rebuild a draft, never a published release.
+      # One GraphQL read gives both isDraft and the asset names; any error
+      # or unexpected answer fails the run rather than reading as "no
+      # release". overwrite_files: false on the upload stays as a backstop.
+      - name: Refuse to overwrite a published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ASSET="First-Light-${TAG#v}.zip"
+          # $owner, $name, $tag are GraphQL variables, not shell ones.
+          # shellcheck disable=SC2016
+          query='query($owner: String!, $name: String!, $tag: String!) {
+            repository(owner: $owner, name: $name) {
+              release(tagName: $tag) {
+                isDraft
+                releaseAssets(first: 100) { totalCount nodes { name } }
+              }
+            }
+          }'
+          err="$RUNNER_TEMP/gh-release-check.err"
+          if ! resp=$(gh api graphql \
+              -f query="$query" \
+              -f owner="${GH_REPO%%/*}" \
+              -f name="${GH_REPO#*/}" \
+              -f tag="$TAG" 2>"$err"); then
+            echo "::error::Could not check the GitHub release for $TAG (gh api graphql failed)."
+            cat "$err" || true
+            exit 1
+          fi
+          if [ -z "$resp" ] || ! printf '%s' "$resp" | jq -e '
+              ((.errors // []) | length) == 0
+              and (.data | type) == "object"
+              and (.data.repository | type) == "object"
+              and (.data.repository | has("release"))' >/dev/null; then
+            echo "::error::Unexpected GraphQL answer while checking the release for $TAG."
+            printf '%s\n' "$resp" | jq -c '.errors // empty' 2>/dev/null || true
+            exit 1
+          fi
+          state=$(printf '%s' "$resp" | jq -r '
+            .data.repository.release
+            | if . == null then "none"
+              elif .isDraft == true then "draft"
+              elif .isDraft == false then "published"
+              else "unknown" end')
+          case "$state" in
+            none)
+              echo "No release for $TAG yet; the upload creates a draft."
+              exit 0
+              ;;
+            published)
+              echo "::error::$TAG already has a published GitHub release. This workflow only creates or updates drafts; it will not touch a published release."
+              exit 1
+              ;;
+            draft)
+              ;;
+            *)
+              echo "::error::Could not tell whether the release for $TAG is a draft (state: $state)."
+              exit 1
+              ;;
+          esac
+          # overwrite_files is false, so an existing asset would be skipped
+          # and the draft would keep the old zip. Fail instead. Same payload
+          # as isDraft; more than 100 assets is unexpected, so fail closed.
+          has_asset=$(printf '%s' "$resp" | jq -r --arg a "$ASSET" '
+            .data.repository.release.releaseAssets
+            | if (.nodes | type) != "array" or (.totalCount | type) != "number" then "unknown"
+              elif .totalCount > (.nodes | length) then "unknown"
+              elif any(.nodes[]; .name == $a) then "yes"
+              else "no" end')
+          case "$has_asset" in
+            no)
+              echo "$TAG has a draft release without $ASSET; uploading to it."
+              ;;
+            yes)
+              echo "::error::The draft for $TAG already has $ASSET. Delete that asset (or the draft) and run again."
+              exit 1
+              ;;
+            *)
+              echo "::error::Could not read the asset list of the draft for $TAG."
+              exit 1
+              ;;
+          esac
 
       # refs/tags/ so a branch with the same name is never built. No stored
       # credential: the upload and the published-release guard use the job's
@@ -358,34 +445,6 @@ jobs:
           fi
           security delete-keychain "$KEYCHAIN_PATH" || true
           rm -f "$KEYCHAIN_PATH" "$RUNNER_TEMP/developer-id.p12"
-
-      # A rerun may rebuild a draft, never a published release.
-      - name: Refuse to overwrite a published release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          if out=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>"$RUNNER_TEMP/gh-release-view.err"); then
-            if [ "$out" != "true" ]; then
-              echo "::error::$TAG already has a published GitHub release. This workflow only creates or updates drafts; it will not touch a published release."
-              exit 1
-            fi
-            # overwrite_files is false, so an existing asset would be skipped
-            # and the draft would keep the old zip. Fail instead.
-            asset=$(basename "$ZIP")
-            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
-              echo "::error::The draft for $TAG already has $asset. Delete that asset (or the draft) and run again."
-              exit 1
-            fi
-            echo "$TAG has a draft release; uploading to it."
-          elif grep -qi 'release not found' "$RUNNER_TEMP/gh-release-view.err"; then
-            echo "No release for $TAG yet; the upload creates a draft."
-          else
-            echo "::error::Could not check the release for $TAG:"
-            cat "$RUNNER_TEMP/gh-release-view.err"
-            exit 1
-          fi
 
       - name: Upload to the draft release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3

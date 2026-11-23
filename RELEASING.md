@@ -44,9 +44,10 @@ downloads `releases/download/vX.Y.Z/First-Light-X.Y.Z.zip`.
 
 To rebuild an existing tag without pushing it again: Actions → Release →
 Run workflow, and pass the tag (for example `v1.0.1`). This only rebuilds a
-**draft**. The workflow refuses to run the upload if the tag already has a
-published release, and it never replaces an asset: if the draft already
-has `First-Light-X.Y.Z.zip`, delete that asset (or the draft) first. The
+**draft**. Before it builds or notarizes anything, the workflow fails if
+the tag already has a published release, or if it cannot tell. It never
+replaces an asset: if the draft already has `First-Light-X.Y.Z.zip`,
+delete that asset (or the draft) first. The
 workflow checks out `refs/tags/vX.Y.Z` (never a branch of the same name)
 and fails if the tag is not of the form `vX.Y.Z` or `vX.Y.Z-suffix`.
 
