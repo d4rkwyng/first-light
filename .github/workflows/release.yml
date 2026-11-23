@@ -334,13 +334,16 @@ jobs:
         run: |
           set -euo pipefail
           KEYCHAIN_PATH="${KEYCHAIN_PATH:-$RUNNER_TEMP/first-light-signing.keychain-db}"
-          # @env: reads the password from the environment, so it is not a
-          # process argument. store-credentials validates with Apple and
-          # writes the profile into the temporary keychain.
+          # notarytool does not support altool's @env:/@keychain: prefixes;
+          # it would send the literal string "@env:NOTARY_PASSWORD" to Apple
+          # (the cause of the earlier 401s). Pass the secret via shell
+          # expansion instead; GitHub Actions masks secret values in logs.
+          # store-credentials validates with Apple and writes the profile
+          # into the temporary keychain.
           xcrun notarytool store-credentials "$NOTARY_PROFILE" \
             --apple-id "$NOTARY_APPLE_ID" \
             --team-id "$NOTARY_TEAM_ID" \
-            --password "@env:NOTARY_PASSWORD" \
+            --password "$NOTARY_PASSWORD" \
             --keychain "$KEYCHAIN_PATH"
           # Account is profile name on older notarytool, and
           # com.apple.gke.notary.tool.saved-creds.<profile> on newer ones.
