@@ -306,4 +306,20 @@ struct MachineControllerTests {
         let rendered = Double(SoundEngine.tapeSamples(phases: phases).count) / SoundEngine.tapeRate
         #expect(SoundEngine.tapeDuration(phases: phases) == rendered)
     }
+
+    // MARK: Accessibility
+
+    @Test func screenTextIsExposedToVoiceOver() {
+        // The bug: the 40×24 display was a bare Canvas with no text at all.
+        let c = makeController()
+        c.connectEverything()
+        c.machine.run(cycles: 200_000) // wozmon prints its "\\" prompt
+        c.machine.type("FF00\n")
+        c.machine.displayCyclesPerChar = 0
+        c.machine.run(cycles: 2_000_000)
+        let text = TerminalView.accessibleText(c.machine.terminal)
+        #expect(text.contains("FF00: D8"), "screen text: \(text)")
+        #expect(text.contains("Cursor on line"))
+        #expect(!text.contains("  \n"), "trailing blanks are trimmed")
+    }
 }

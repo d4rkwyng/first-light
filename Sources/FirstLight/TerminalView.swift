@@ -103,6 +103,25 @@ struct TerminalView: View {
         .padding(8)
         .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        // The picture is pixels only; give VoiceOver the same 40×24 text.
+        // Re-read on every displayRevision bump, like the Canvas.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Apple-1 screen")
+        .accessibilityValue(Self.accessibleText(controller.machine.terminal))
+        .accessibilityAddTraits(.updatesFrequently)
+    }
+
+    /// The visible screen as text for VoiceOver: non-blank rows, top to
+    /// bottom, trailing spaces trimmed, plus where the cursor sits.
+    static func accessibleText(_ terminal: Terminal) -> String {
+        let rows = (0..<Terminal.rows).map { row -> String in
+            var line = terminal.line(row)
+            while line.last == " " { line.removeLast() }
+            return line
+        }.filter { !$0.isEmpty }
+        let cursor = "Cursor on line \(terminal.cursorY + 1), column \(terminal.cursorX + 1)."
+        return rows.isEmpty ? "Blank. " + cursor
+                            : rows.joined(separator: "\n") + "\n" + cursor
     }
 }
 
