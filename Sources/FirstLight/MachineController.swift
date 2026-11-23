@@ -522,9 +522,14 @@ final class MachineController {
 
     func start() {
         guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
+        // .common, not just .default: otherwise the machine, the cursor and
+        // the deck freeze while a menu is open or a window/knob is dragged,
+        // and the tape audio (which keeps playing) drifts from the load.
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { _ in
             MainActor.assumeIsolated { self.tick() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // NSEvent is not Sendable; lift out the plain values first.
             let keyCode = event.keyCode
