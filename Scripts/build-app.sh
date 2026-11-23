@@ -102,8 +102,10 @@ touch "$APP" "$APP/Contents/Info.plist"
 # bundle root AFTER signing, which `codesign --verify --strict` rejects
 # ("resource fork, Finder information, or similar detritus not allowed") —
 # a distribution bundle must stay exactly as signed. CFBundleIconFile covers it.
+# Stamp from the committed .icns (all native sizes), not the untracked
+# dist/AppIcon.iconset, which may be missing or left over from an older icon.
 if (( ! RELEASE )); then
-    swift Tools/seticon.swift dist/AppIcon.iconset/icon_512x512@2x.png "$APP" || true
+    swift Tools/seticon.swift Sources/FirstLight/Resources/AppIcon.icns "$APP" || true
 fi
 echo "built $APP"
 echo "(icon stale? run: killall Dock Finder)"
