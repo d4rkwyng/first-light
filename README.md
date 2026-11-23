@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="First Light — the Apple-1's \@ boot prompt in real Signetics 2513 ROM glyphs, six hard 1977 stripes, on a dark CRT in a PCB-green squircle"></p>
+<p align="center"><img src="docs/icon.png" width="128" alt="First Light — \@, the Woz Monitor's \ prompt and the Apple-1's @ cursor, in real Signetics 2513 ROM glyphs, six hard 1977 stripes, on a dark CRT in a PCB-green squircle"></p>
 
 # First Light
 
@@ -25,10 +25,17 @@ working knobs (V-HOLD included) that detaches into its own window, and
 a cassette deck that plays each tape's ACTUAL BYTES as bit-true ACI
 audio while it loads. The cassette library holds the official 1976
 catalog (Hamurabi, Microchess, Lunar Lander, Mini-Startrek, Mastermind,
-the Dis-Assembler, the Extended Monitor, Integer BASIC) plus modern
-homebrew — all machine-verified by `Scripts/verify-tapes.sh`. ⌘K opens
+Blackjack, the Dis-Assembler, the Extended Monitor, Integer BASIC, and
+Life, the tape that came with the Apple-1) plus modern homebrew (15
+Puzzle, 2048, APPLE 30TH, Mandelbrot 65, and APPLE 50TH) — all
+machine-verified by `Scripts/verify-tapes.sh`. ⌘K opens
 a command palette that types 1976 syntax for you; ⌘/ is the quick
-reference; ⌘F is full-screen phosphor. See [docs/PLAN.md](docs/PLAN.md).
+reference; ⌘F is full-screen phosphor. VoiceOver can read the Apple-1
+screen: the visible text and the cursor position. See
+[docs/PLAN.md](docs/PLAN.md).
+
+What's new: see the [changelog](CHANGELOG.md), or
+[1.0.1](CHANGELOG.md#101---2026-11-23) for the latest release.
 
 ![The bench: board, monitor, keyboard, and cassette deck](docs/screenshots/bench.png)
 
@@ -36,21 +43,51 @@ reference; ⌘F is full-screen phosphor. See [docs/PLAN.md](docs/PLAN.md).
 
 Download the latest notarized build from
 [Releases](https://github.com/d4rkwyng/first-light/releases) — or build it
-yourself below. Requires macOS 15 or later. Or:
+yourself below. Apple silicon only (there is no Intel build); requires
+macOS 15 or later.
+
+Or install with Homebrew. Homebrew asks you to trust a third-party tap
+once before it loads its casks:
 
 ```sh
+brew trust --tap d4rkwyng/tap
 brew install --cask d4rkwyng/tap/first-light
 ```
 
+## Custom cassettes
+
+Cassettes ▸ Load Custom Cassette… (⌘O) loads your own tape:
+
+- `.bin` — raw bytes, loaded at `$0300` and run. Put a hex address after
+  an `@` in the name to load elsewhere: `game@0280.bin` loads at `$0280`.
+- `.txt` in wozmon format (`0300: A9 00 …`) — each line goes to its
+  address, and it runs from the first one. A tape that includes zero page
+  is treated as an Integer BASIC program and started in BASIC.
+- `.txt` of BASIC source — typed into Integer BASIC and `RUN`.
+- A recording of a real Apple-1 tape — `.wav`, `.aif`, `.aiff`, `.mp3`,
+  or `.m4a` — decoded from the ACI tones.
+
+A tape can hold at most 64 KB, and a recording can run at most 10
+minutes. A file that is too big, too long, unreadable, or a recording
+with no Apple-1 tape data in it gets an alert that says so.
+
+Cassettes ▸ Record to Cassette… saves a memory range as a wozmon-format
+`.txt` (it loads straight back) plus a bit-true `.wav` of the ACI tones.
+The BASIC-program preset saves only the `.txt`: a BASIC tape is two
+ranges, pointers and program, so there is no single `.wav` for it.
+
 ## Build & test
 
-Works with Command Line Tools only (no Xcode required):
+Works with Command Line Tools only (no Xcode required), including the
+newer Swift 6.4 / macOS 27 SDK toolchain:
 
 ```sh
 ./Scripts/test.sh                 # run the core test suite
 ./Scripts/build-app.sh            # build dist/First Light.app
 ./Scripts/build-app.sh --install  # ...and copy to /Applications
 swift run FirstLight              # or just run it directly
+./Scripts/verify-tapes.sh         # load and check every library tape
+./Scripts/verify-tapes.sh --verbose  # ...and dump each tape's transcript
 ```
 
 Notarized releases are built by
