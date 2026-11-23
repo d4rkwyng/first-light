@@ -4,8 +4,23 @@
 #
 # Checks that the bundle carries its SwiftPM resource bundles in
 # Contents/Resources, then starts the app's executable, waits (default 6 s),
-# and fails if the process exited on its own or a new "First Light*.ips"
-# crash report appeared in ~/Library/Logs/DiagnosticReports. Exit 0 = pass.
+# and fails if the process exited on its own. If the launch survived, runs
+# `"First Light" --resource-check` (loads one known file from each resource
+# bundle through the app's locator, never Bundle.module; prints one line per
+# bundle with the resolved path) and requires exit 0 within 15 s. Fails if a
+# new "First Light*.ips" crash report appeared in
+# ~/Library/Logs/DiagnosticReports during either run. Exit 0 = pass.
+#
+# Order: the plain launch runs first, so an app that crashes at launch (1.0.0,
+# 1.0.1, or any build older than --resource-check, which would just ignore
+# the flag) fails with "exited within 6s" before the resource check runs.
+# Both runs happen with the build-time bundle paths hidden (below).
+#
+# Not covered (known follow-up): a crash AFTER the 6 s window. The board art,
+# tapes, gallery and BASIC/ACI ROMs load lazily on user action through the
+# same static bundle accessors, so a bundle that resolved at launch but lacks
+# a later file would only fail then. --resource-check samples one file per
+# bundle, not every file.
 #
 # Why the build-time bundles are hidden while the app runs:
 #   SwiftPM's generated Bundle.module accessor (the native build system,
@@ -84,6 +99,7 @@ restore() {
 }
 cleanup() {
     [[ -n "${PID:-}" ]] && kill -9 "$PID" 2>/dev/null || true
+    [[ -n "${RCPID:-}" ]] && kill -9 "$RCPID" 2>/dev/null || true
     restore
     [[ -n "${TMP:-}" ]] && rm -rf "$TMP"
     if (( RESTORE_FAILED )); then
@@ -143,6 +159,29 @@ else
     wait "$PID" 2>/dev/null || true
     PID=
 fi
+# 4. Resource check (only if the launch survived), still with paths hidden.
+RCWAIT=15
+rc_rc=-1
+rc_timed_out=0
+if (( ! exited )); then
+    "$EXE" --resource-check >"$TMP/rc-stdout" 2>"$TMP/rc-stderr" &
+    RCPID=$!
+    for (( i = 0; i < RCWAIT * 4; i++ )); do
+        kill -0 "$RCPID" 2>/dev/null || break
+        sleep 0.25
+    done
+    if kill -0 "$RCPID" 2>/dev/null; then
+        rc_timed_out=1
+        kill -9 "$RCPID" 2>/dev/null || true
+        wait "$RCPID" 2>/dev/null || true
+    else
+        rc_rc=0
+        wait "$RCPID" || rc_rc=$?
+    fi
+    RCPID=
+    (( rc_rc == 0 )) || sleep 3   # let ReportCrash write any .ips
+fi
+
 NHIDDEN=${#HIDDEN[@]}
 restore
 (( ! RESTORE_FAILED )) || fail "could not restore every hidden build-time bundle path (see above)"
@@ -155,8 +194,20 @@ if (( exited )); then
     [[ -n "$crash" ]] && echo "crash report(s): $crash" >&2
     fail "First Light exited within ${WAIT}s (exit code $rc)"
 fi
+echo "launch ok: First Light ran ${WAIT}s"
+cat "$TMP/rc-stdout"
+if (( rc_timed_out )); then
+    fail "--resource-check did not exit within ${RCWAIT}s (a build without the flag starts the UI instead)"
+fi
+if (( rc_rc != 0 )); then
+    echo "--- resource-check stderr ---" >&2; cat "$TMP/rc-stderr" >&2
+    [[ -n "$crash" ]] && echo "crash report(s): $crash" >&2
+    fail "--resource-check exited with code $rc_rc"
+fi
+(( $(grep -c '^resource-check PASS ' "$TMP/rc-stdout") == 2 )) \
+    || fail "--resource-check exited 0 but did not print two PASS lines"
 if [[ -n "$crash" ]]; then
     echo "--- stderr ---" >&2; cat "$TMP/stderr" >&2
     fail "new crash report(s) during the smoke window: $crash"
 fi
-echo "SMOKE PASS: First Light ran ${WAIT}s (${NHIDDEN} build-time bundle path(s) hidden, ${#FALLBACKS[@]} embedded); no crash report"
+echo "SMOKE PASS: First Light ran ${WAIT}s and --resource-check passed (${NHIDDEN} build-time bundle path(s) hidden, ${#FALLBACKS[@]} embedded); no crash report"
