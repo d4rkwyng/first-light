@@ -322,4 +322,23 @@ struct MachineControllerTests {
         #expect(text.contains("Cursor on line"))
         #expect(!text.contains("  \n"), "trailing blanks are trimmed")
     }
+
+    @Test func hexLookingTapeNameStillLoadsAt0300() throws {
+        // The bug: "2048.bin" (no "@") parsed as load address $2048, where
+        // there is no RAM. Only "name@ADDR.bin" names an address.
+        func load(_ file: String) throws -> MachineController {
+            let c = makeController()
+            c.connectEverything()
+            let url = tempURL(file)
+            try Data([0xA9, 0x42, 0x60]).write(to: url)
+            c.insertCustom(url: url)
+            var spins = 0
+            while c.nowLoading != nil && spins < 10_000 { c.advanceLoad(); spins += 1 }
+            return c
+        }
+        let plain = try load("2048.bin")
+        #expect(plain.machine.peek(0x0300) == 0xA9)
+        let addressed = try load("demo@0280.bin")
+        #expect(addressed.machine.peek(0x0280) == 0xA9)
+    }
 }

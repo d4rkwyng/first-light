@@ -1042,7 +1042,10 @@ final class MachineController {
     private func performCustom(name: String, data: Data, isBin: Bool) {
         if isBin {
             var load: UInt16 = 0x0300
-            if let at = name.split(separator: "@").last,
+            // only a "name@0280" style name carries an address — "2048.bin"
+            // or "cafe.bin" is a title that happens to be hex, not $2048
+            let parts = name.split(separator: "@")
+            if parts.count >= 2, let at = parts.last,
                let parsed = UInt16(at, radix: 16) {
                 load = parsed
             }
