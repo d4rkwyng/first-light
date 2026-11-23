@@ -154,6 +154,7 @@ final class MachineController {
     private(set) var insertedTapeName: String?
 
     func ejectTape() {
+        cancelCustomDecode()
         insertedTapeName = nil
         lastTape = nil
         lastCustomLoad = nil
@@ -181,7 +182,7 @@ final class MachineController {
     /// STOP: kill a load mid-transfer — the bytes never arrive,
     /// exactly like stopping a real tape too early.
     func stopTape() {
-        guard nowLoading != nil else { return }
+        guard nowLoading != nil || customDecode != nil else { return }
         cancelInFlightLoad() // also flushes the queued run command (L3)
         sound.chipEject()
     }
@@ -257,6 +258,7 @@ final class MachineController {
 
     private func stageLoad(name: String, bytes: [UInt8],
                            _ action: @escaping () -> Void) {
+        cancelCustomDecode() // a newer load supersedes a recording still decoding
         // Load the machine AS-IS — don't re-seat chips the user pulled.
         connect(.power); connect(.display); connect(.keyboard)
         connect(.aciCard)
@@ -400,6 +402,7 @@ final class MachineController {
     /// Abort any cassette load in progress and flush the autotype queue —
     /// the shared cleanup behind reset/power-off/STOP/processor-swap.
     private func cancelInFlightLoad() {
+        cancelCustomDecode()
         autoTypeQueue.removeAll()
         if nowLoading != nil { sound.tapeStop() }
         nowLoading = nil
@@ -968,11 +971,24 @@ final class MachineController {
 
     /// Shown (and cleared) by the bench when a custom tape can't be loaded.
     var customTapeError: String?
+
+    /// A tape recording still being decoded off the main thread. Anything
+    /// that cancels or supersedes a load bumps the generation, so a decode
+    /// that finishes late never stages over what the user did since.
+    private(set) var customDecode: Task<Void, Never>?
+    private var customDecodeGeneration = 0
+
+    private func cancelCustomDecode() {
+        customDecodeGeneration += 1
+        customDecode?.cancel()
+        customDecode = nil
+    }
     /// Shown (and cleared) by the bench when recording to disk fails.
     var recordError: String?
 
     func insertCustom(url: URL) {
         ensure6502()
+        cancelCustomDecode()
         customTapeError = nil
         let title = url.deletingPathExtension().lastPathComponent
         let file = url.lastPathComponent
@@ -980,7 +996,8 @@ final class MachineController {
         if ["wav", "aif", "aiff", "mp3", "m4a"].contains(ext) {
             // a real tape recording: decode the FSK back into bytes — off the
             // main thread, since a long recording takes a while
-            Task { [weak self] in
+            let generation = customDecodeGeneration
+            customDecode = Task { [weak self] in
                 let result = await Task.detached(priority: .userInitiated) {
                     let accessing = url.startAccessingSecurityScopedResource()
                     defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -989,7 +1006,10 @@ final class MachineController {
                                                maxBytes: MachineController.maxCustomTapeBytes)
                     }
                 }.value
-                guard let self else { return }
+                // cancelled, or superseded by another load, while decoding
+                guard let self, !Task.isCancelled,
+                      generation == self.customDecodeGeneration else { return }
+                self.customDecode = nil
                 switch result {
                 case .success(let bytes):
                     self.ensure6502()

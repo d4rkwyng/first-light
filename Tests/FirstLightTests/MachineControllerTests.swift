@@ -357,4 +357,34 @@ struct MachineControllerTests {
         #expect(c.machine.peek(0x0300) == 0x11 && c.machine.peek(0x0301) == 0x22,
                 "restored RAM must not be overwritten by the cancelled tape")
     }
+
+    @Test func aLateAudioDecodeNeverStagesAfterStopOrRestore() async throws {
+        // Codex review: the off-main decode wasn't tracked, so STOP, a
+        // snapshot restore or another tape during the decode was undone
+        // when the old decode finished and staged its tape anyway.
+        let c = makeController()
+        c.connectEverything()
+        let wav = tempURL("late.wav")
+        try c.sound.writeTapeWAV(bytes: [0xA9, 0x01, 0x60], to: wav)
+
+        c.insertCustom(url: wav)
+        let stopped = try #require(c.customDecode)
+        c.stopTape()
+        await stopped.value
+        #expect(c.nowLoading == nil, "STOP during decode must stick")
+        #expect(c.customTapeError == nil)
+
+        let saved = try #require(c.encodeBenchState())
+        c.insertCustom(url: wav)
+        let restored = try #require(c.customDecode)
+        #expect(c.applyBenchState(saved))
+        await restored.value
+        #expect(c.nowLoading == nil, "a restore during decode must stick")
+
+        // Left alone, the same recording does load.
+        c.insertCustom(url: wav)
+        await c.customDecode?.value
+        #expect(c.nowLoading == "late")
+        #expect(c.customDecode == nil)
+    }
 }
