@@ -341,4 +341,19 @@ struct MachineControllerTests {
         let addressed = try load("demo@0280.bin")
         #expect(addressed.machine.peek(0x0280) == 0xA9)
     }
+
+    @Test func restoringASnapshotCancelsAnInFlightLoad() throws {
+        let c = makeController()
+        c.connectEverything()
+        c.machine.load([0x11, 0x22], at: 0x0300)
+        let saved = try #require(c.encodeBenchState())
+        let tape = try #require(TapeLibrary.tapes.first)
+        c.insert(tape)
+        #expect(c.nowLoading != nil)
+        #expect(c.applyBenchState(saved))
+        #expect(c.nowLoading == nil, "the old session's load must not survive")
+        for _ in 0..<400 { c.advanceLoad(); c.pumpAutoTypeForTesting() }
+        #expect(c.machine.peek(0x0300) == 0x11 && c.machine.peek(0x0301) == 0x22,
+                "restored RAM must not be overwritten by the cancelled tape")
+    }
 }

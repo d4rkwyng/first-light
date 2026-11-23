@@ -1204,6 +1204,11 @@ final class MachineController {
               state.machine.mem.count == 0x10000,
               state.machine.screen.count == Terminal.columns * Terminal.rows
         else { return false } // reject a corrupt/foreign file before touching live state
+        // A load or autotype still in flight belongs to the session being
+        // replaced: left alive, it would reset the restored machine a few
+        // frames later, deposit its tape over it and type the run command.
+        cancelInFlightLoad()
+        clearCrashState()
         placed = Set(state.placed.compactMap(ChipGroup.init(rawValue:)))
         connected = Set(state.connected.compactMap(Peripheral.init(rawValue:)))
         // Set the variant BEFORE restoring: the didSet resets/clears, then
