@@ -219,4 +219,40 @@ struct MachineControllerTests {
         // Forward rotation is unchanged.
         #expect(MachineController.factIndex(frame: 900 * 3, offset: 1, count: count) == 4)
     }
+
+    // MARK: Keyboard routing
+
+    @Test func textFieldsAndModalsKeepTheirKeys() {
+        // The bug: the app-wide monitor fed hex typed into the Scope's
+        // address field to the Apple-1 (only a fixed list of sheets was
+        // exempt), and a save panel's name field would have lost keys too.
+        #expect(MachineController.apple1MayTakeKeys(
+            uiHasKeyboard: false, modalUp: false, textInputFocused: false))
+        #expect(!MachineController.apple1MayTakeKeys(
+            uiHasKeyboard: false, modalUp: false, textInputFocused: true))
+        #expect(!MachineController.apple1MayTakeKeys(
+            uiHasKeyboard: false, modalUp: true, textInputFocused: false))
+        #expect(!MachineController.apple1MayTakeKeys(
+            uiHasKeyboard: true, modalUp: false, textInputFocused: false))
+    }
+
+    @Test func onlyTheApple1KeyboardRefusesToRepeat() {
+        let c = makeController()
+        c.connectEverything()
+        #expect(c.powered && c.connected.contains(.keyboard))
+        let kbdcr: UInt16 = 0xD011
+        // Let wozmon set up the PIA so a waiting key shows in KBDCR bit 7.
+        c.machine.run(cycles: 200_000)
+        #expect(c.machine.busPeek(kbdcr) & 0x80 == 0)
+        // A held key's repeats are swallowed and never reach the machine...
+        #expect(c.handle(keyCode: 0, characters: "a", command: false, isRepeat: true))
+        #expect(c.machine.busPeek(kbdcr) & 0x80 == 0, "a repeat must not press")
+        // ...the first press does...
+        #expect(c.handle(keyCode: 0, characters: "a", command: false))
+        #expect(c.machine.busPeek(kbdcr) & 0x80 != 0)
+        // ...and keys the Apple-1 has no use for (arrows) repeat normally,
+        // as do ⌘-shortcuts.
+        #expect(!c.handle(keyCode: 123, characters: "\u{F702}", command: false, isRepeat: true))
+        #expect(!c.handle(keyCode: 6, characters: "z", command: true, isRepeat: true))
+    }
 }

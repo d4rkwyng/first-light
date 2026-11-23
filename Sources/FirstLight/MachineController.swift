@@ -527,16 +527,22 @@ final class MachineController {
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // NSEvent is not Sendable; lift out the plain values first.
-            // Held keys do NOT repeat — the Datanetics keyboard had no
-            // auto-repeat, so neither do we.
-            if event.isARepeat { return nil }
             let keyCode = event.keyCode
             let characters = event.characters
             let command = event.modifierFlags.contains(.command)
+            let isRepeat = event.isARepeat
             let consumed = MainActor.assumeIsolated { () -> Bool in
-                guard let self, !self.uiHasKeyboard else { return false }
+                guard let self else { return false }
+                // A text field (the Scope's hex address, the palette, a save
+                // panel's name) or any modal owns its typing — and its key
+                // repeats. Only what is left goes to the Apple-1.
+                let responder = NSApp.keyWindow?.firstResponder
+                guard MachineController.apple1MayTakeKeys(
+                    uiHasKeyboard: self.uiHasKeyboard,
+                    modalUp: NSApp.modalWindow != nil,
+                    textInputFocused: responder is NSText) else { return false }
                 return self.handle(keyCode: keyCode, characters: characters,
-                                   command: command)
+                                   command: command, isRepeat: isRepeat)
             }
             return consumed ? nil : event
         }
@@ -1194,16 +1200,32 @@ final class MachineController {
 
     var typingHintActive: Bool { pulseFrame < typingHintUntil }
 
-    private func handle(keyCode: UInt16, characters: String?, command: Bool) -> Bool {
+    /// Whether a keyDown may reach the emulated keyboard at all. Sheets the
+    /// app knows about, any AppKit modal (save/open panels), and a focused
+    /// text view (NSTextView is the field editor behind every TextField)
+    /// keep their keys, including auto-repeat.
+    static func apple1MayTakeKeys(uiHasKeyboard: Bool, modalUp: Bool,
+                                  textInputFocused: Bool) -> Bool {
+        !uiHasKeyboard && !modalUp && !textInputFocused
+    }
+
+    /// Returns true if the Apple-1 consumed the key. Held keys do NOT
+    /// repeat on the Apple-1 — the Datanetics keyboard had no auto-repeat —
+    /// so a repeat of a key the machine would take is swallowed without
+    /// pressing it; repeats the machine wouldn't take pass through.
+    func handle(keyCode: UInt16, characters: String?, command: Bool,
+                isRepeat: Bool = false) -> Bool {
         if command { return false }
         // ESC in full-screen is purely the exit gesture — works even on a dark
         // tube, and never leaks a 0x1B line-cancel into a monitor input line.
         if keyCode == 53, fullScreenDisplay {
+            if isRepeat { return true }
             if frame - lastEscFrame < 35 { fullScreenDisplay = false }
             lastEscFrame = frame
             return true
         }
         guard powered, connected.contains(.keyboard) else {
+            if isRepeat { return false }
             // typing at a deaf machine: after a few keys, say why
             if frame - lastStrayFrame > 300 { strayKeys = 0 }
             strayKeys += 1
@@ -1215,6 +1237,7 @@ final class MachineController {
         // interleaving the two garbles the demo input line.
         if !autoTypeQueue.isEmpty { return true }
         if keyCode == 53 { // esc — Woz Monitor line cancel (full-screen handled above)
+            if isRepeat { return true }
             machine.press(0x1B)
             keyFlash = (0x1B, frame)
             sound.keyClick()
@@ -1222,6 +1245,11 @@ final class MachineController {
         }
         guard let scalar = characters?.uppercased().unicodeScalars.first,
               scalar.isASCII else { return false }
+        switch scalar.value {
+        case 0x0D, 0x03, 0x7F, 0x20...0x5F:
+            if isRepeat { return true } // no auto-repeat on the Apple-1
+        default: return false
+        }
         switch scalar.value {
         case 0x0D, 0x03: machine.press(0x0D)
         case 0x7F: machine.press(0x5F) // delete → "_", the Apple-1 rubout
