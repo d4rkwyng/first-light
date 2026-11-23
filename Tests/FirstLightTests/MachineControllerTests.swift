@@ -358,7 +358,7 @@ struct MachineControllerTests {
                 "restored RAM must not be overwritten by the cancelled tape")
     }
 
-    @Test func aLateAudioDecodeNeverStagesAfterStopRestoreOrAnotherLoad() async throws {
+    @Test func aLateAudioDecodeNeverStagesAfterStopResetRestoreOrAnotherLoad() async throws {
         // Codex review: the off-main decode wasn't tracked, so STOP, a
         // snapshot restore or another tape during the decode was undone
         // when the old decode finished and staged its tape anyway.
@@ -380,6 +380,12 @@ struct MachineControllerTests {
         #expect(c.applyBenchState(saved))
         await restored.value
         #expect(c.nowLoading == nil, "a restore during decode must stick")
+
+        c.insertCustom(url: wav)
+        let reset = try #require(c.customDecode)
+        c.reset()
+        await reset.value
+        #expect(c.nowLoading == nil, "RESET during decode must stick")
 
         // Another tape inserted during the decode wins — on the authentic
         // ACI path (which doesn't go through stageLoad) as well as showcase.

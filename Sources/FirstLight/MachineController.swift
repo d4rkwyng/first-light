@@ -1374,6 +1374,11 @@ final class MachineController {
 
     func reset() {
         guard powered else { return }
+        // A recording still decoding hasn't reached the deck yet: RESET drops
+        // it rather than letting it load over the fresh prompt. (A tape that
+        // is already playing keeps playing, as before.) Every internal caller
+        // runs after a decode finished or is itself a newer load.
+        cancelCustomDecode()
         clearCrashState()
         ranLoadedProgram = false // back at the bare monitor; re-arm crash detection
         machine.reset()
