@@ -36,7 +36,7 @@ public enum ROM {
     }
 
     private static func load(_ name: String) throws -> [UInt8] {
-        guard let url = Bundle.module.url(
+        guard let url = Apple1CoreResources.bundle.url(
             forResource: name, withExtension: "bin", subdirectory: "ROMs")
         else { throw Error.missing(name) }
         return [UInt8](try Data(contentsOf: url))

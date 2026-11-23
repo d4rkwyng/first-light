@@ -5,9 +5,9 @@ import Apple1Core
 /// `xcrun metal` — see Shaders/CRT.metal). Nil on a CLT-only machine,
 /// where the Canvas fallback below takes over.
 @MainActor let crtShaderLibrary: ShaderLibrary? = {
-    guard let url = Bundle.module.url(forResource: "CRT",
-                                      withExtension: "metallib",
-                                      subdirectory: "Resources")
+    guard let url = FirstLightResources.bundle.url(forResource: "CRT",
+                                                   withExtension: "metallib",
+                                                   subdirectory: "Resources")
     else { return nil }
     return ShaderLibrary(url: url)
 }()

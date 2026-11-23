@@ -1401,9 +1401,9 @@ struct ACIInspectView: View {
                         Color(red: 0.21, green: 0.33, blue: 0.24),
                         Color(red: 0.15, green: 0.26, blue: 0.18)],
                         startPoint: .top, endPoint: .bottom))
-                if let url = Bundle.module.url(forResource: "aci-copper",
-                                               withExtension: "png",
-                                               subdirectory: "Resources"),
+                if let url = FirstLightResources.bundle.url(forResource: "aci-copper",
+                                                            withExtension: "png",
+                                                            subdirectory: "Resources"),
                    let image = NSImage(contentsOf: url) {
                     Image(nsImage: image)
                         .resizable()

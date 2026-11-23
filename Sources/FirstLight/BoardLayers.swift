@@ -59,8 +59,8 @@ struct GerberLayer: View {
     var opacity: Double = 1.0
 
     var body: some View {
-        if let url = Bundle.module.url(forResource: name, withExtension: "png",
-                                       subdirectory: "Resources"),
+        if let url = FirstLightResources.bundle.url(forResource: name, withExtension: "png",
+                                                    subdirectory: "Resources"),
            let image = NSImage(contentsOf: url) {
             Image(nsImage: image)
                 .resizable()

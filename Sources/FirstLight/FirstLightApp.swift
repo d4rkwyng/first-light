@@ -54,9 +54,9 @@ struct FirstLightApp: App {
         // cache moods.
         if let url = Bundle.main.url(forResource: "AppIcon",
                                      withExtension: "icns")
-            ?? Bundle.module.url(forResource: "AppIcon",
-                                 withExtension: "icns",
-                                 subdirectory: "Resources"),
+            ?? FirstLightResources.bundle.url(forResource: "AppIcon",
+                                              withExtension: "icns",
+                                              subdirectory: "Resources"),
            let image = NSImage(contentsOf: url) {
             NSApplication.shared.applicationIconImage = image
         }
