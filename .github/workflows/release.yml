@@ -240,7 +240,7 @@ jobs:
       # Scripts/test.sh under full Xcode is `swift test --no-parallel -c release`.
       # --no-parallel: fake6502 keeps the CPU in C globals, so the two suites
       # cannot run at once. -c release: the emulation tests run many cycles.
-      # The suite is 56 tests today; none of them assert wall-clock time
+      # The suite is 59 tests today; none of them assert wall-clock time
       # (the 60 cps governor counts CPU cycles).
       - name: Tests
         run: swift test --no-parallel -c release
