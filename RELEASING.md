@@ -68,7 +68,12 @@ a prerelease; its zip name keeps the suffix, and its notes come from the
 
 Open the draft and confirm the app before publishing. Gatekeeper should
 accept it (`spctl`, `stapler validate`, and `codesign --verify --deep
---strict` already ran in the workflow).
+--strict` already ran in the workflow). The workflow also launched the
+unzipped app with `Scripts/smoke-launch.sh`, which hides the runner's
+`.build` while the app runs so SwiftPM's build-path fallback cannot mask a
+missing resource bundle (the 1.0.0/1.0.1 launch crash). To repeat that on
+a downloaded zip: unzip it with `ditto -x -k` and run
+`Scripts/smoke-launch.sh "<dir>/First Light.app"`.
 
 ## Publish, then the cask
 

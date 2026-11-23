@@ -1,12 +1,15 @@
 #!/bin/zsh
 # Builds First Light.app from the SwiftPM FirstLight executable.
 # Output: dist/First Light.app
-# Usage: Scripts/build-app.sh [--clean] [--install] [--release]
+# Usage: Scripts/build-app.sh [--clean] [--install] [--release] [--smoke]
 #   --clean    rm -rf .build first — forces a full rebuild. Use before a
 #              release or if a run shows stale behavior: SwiftPM's incremental
 #              build can occasionally serve a stale binary (seen after a branch
 #              switch + large edit batch).
 #   --install  also copy the finished bundle to /Applications
+#   --smoke    after building, launch-test the app with Scripts/smoke-launch.sh
+#              (hides the build-time bundles while the app runs; ~10 s, a window opens).
+#              The release workflow always runs it on the unzipped release app.
 #   --release  sign for distribution (hardened runtime), notarize, staple,
 #              and zip → dist/First-Light-<version>.zip. Requires:
 #                CODESIGN_ID     "Developer ID Application: …" identity
@@ -21,12 +24,14 @@ cd "$(dirname "$0")/.."
 CLEAN=0
 INSTALL=0
 RELEASE=0
+SMOKE=0
 for arg in "$@"; do
     case "$arg" in
         --clean)   CLEAN=1 ;;
         --install) INSTALL=1 ;;
         --release) RELEASE=1 ;;
-        *) echo "unknown option: $arg (use --clean, --install and/or --release)" >&2; exit 2 ;;
+        --smoke)   SMOKE=1 ;;
+        *) echo "unknown option: $arg (use --clean, --install, --release and/or --smoke)" >&2; exit 2 ;;
     esac
 done
 
@@ -49,8 +54,15 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BUILD_DIR/FirstLight" "$APP/Contents/MacOS/First Light"
-# The Apple1Core resource bundle (ROMs) must travel with the app;
-# Bundle.module looks in Contents/Resources first.
+# The SwiftPM resource bundles (Apple1Core: ROMs; FirstLight: art, tapes,
+# shader) must travel with the app, in Contents/Resources — the only place
+# codesign/notarization accept them. SwiftPM's generated Bundle.module (native
+# build system, e.g. Xcode 16 on the CI runner) does NOT look here — only at
+# the .app root and the absolute .build path, then fatalError. That shipped
+# 1.0.0 and 1.0.1 crashing at launch. So the code loads resources through
+# Apple1CoreResources /
+# FirstLightResources (Sources/*/ResourceBundle.swift), which check
+# Contents/Resources first. Scripts/smoke-launch.sh verifies this.
 cp -R "$BUILD_DIR/first-light_Apple1Core.bundle" "$APP/Contents/Resources/"
 cp -R "$BUILD_DIR/first-light_FirstLight.bundle" "$APP/Contents/Resources/"
 cp Sources/FirstLight/Resources/AppIcon.icns "$APP/Contents/Resources/"
@@ -139,6 +151,11 @@ if (( RELEASE )); then
         exit 1
     fi
     echo "notarized + stapled: $ZIP"
+fi
+
+if (( SMOKE )); then
+    # Before --install, which deletes the dist copy.
+    Scripts/smoke-launch.sh "$APP"
 fi
 
 if (( INSTALL )); then

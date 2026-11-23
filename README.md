@@ -85,6 +85,7 @@ newer Swift 6.4 / macOS 27 SDK toolchain:
 ./Scripts/test.sh                 # run the core test suite
 ./Scripts/build-app.sh            # build dist/First Light.app
 ./Scripts/build-app.sh --install  # ...and copy to /Applications
+./Scripts/build-app.sh --smoke    # ...and launch-test it (Scripts/smoke-launch.sh)
 swift run FirstLight              # or just run it directly
 ./Scripts/verify-tapes.sh         # load and check every library tape
 ./Scripts/verify-tapes.sh --verbose  # ...and dump each tape's transcript

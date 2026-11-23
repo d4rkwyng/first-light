@@ -240,7 +240,7 @@ jobs:
       # Scripts/test.sh under full Xcode is `swift test --no-parallel -c release`.
       # --no-parallel: fake6502 keeps the CPU in C globals, so the two suites
       # cannot run at once. -c release: the emulation tests run many cycles.
-      # The suite is 49 tests today; none of them assert wall-clock time
+      # The suite is 56 tests today; none of them assert wall-clock time
       # (the 60 cps governor counts CPU cycles).
       - name: Tests
         run: swift test --no-parallel -c release
@@ -370,7 +370,8 @@ jobs:
       # build-app.sh already runs codesign --verify --strict and spctl.
       # Check again, and check the staple, the arch, and the cask's filename.
       # The zip is what ships, so its unpacked app gets the same checks plus
-      # the hardened runtime flag and the Team ID.
+      # the hardened runtime flag, the Team ID, and a launch smoke test
+      # (Scripts/smoke-launch.sh). This all runs before the upload step.
       - name: Verify the signed app
         env:
           NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
@@ -429,6 +430,14 @@ jobs:
             echo "::error::The app in $ZIP is not signed by the NOTARY_TEAM_ID team."
             exit 1
           fi
+          # Launch the app that ships (the unzipped one). The smoke hides
+          # the resource bundles under the checkout's .build while the app
+          # runs: SwiftPM's resource accessor falls back to that absolute
+          # build path (compiled into the binary), which would
+          # mask a missing-resource-bundle crash on this runner. 1.0.1
+          # passed every check above and still crashed at launch on users'
+          # Macs (could not load resource bundle).
+          Scripts/smoke-launch.sh "$ZAPP"
           rm -rf "$UNZIPPED"
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
           echo "Verified $ZIP (arm64, macOS $min+)."
