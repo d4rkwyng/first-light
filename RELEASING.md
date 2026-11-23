@@ -51,6 +51,12 @@ delete that asset (or the draft) first. The
 workflow checks out `refs/tags/vX.Y.Z` (never a branch of the same name)
 and fails if the tag is not of the form `vX.Y.Z` or `vX.Y.Z-suffix`.
 
+Run workflow uses the workflow file from the branch you run it on
+(normally `main`), not the copy stored on the tag. It still checks out
+and builds `refs/tags/vX.Y.Z`. That matters when the tag carries an older
+workflow: `v1.0.1` was tagged before the notarization fix in PR #20, so
+its successful build was a Run workflow from `main`.
+
 ## Draft
 
 A successful run leaves a draft release on the tag. The asset is
@@ -67,7 +73,10 @@ accept it (`spctl`, `stapler validate`, and `codesign --verify --deep
 ## Publish, then the cask
 
 1. Publish the draft on GitHub. That is the only step that makes it the
-   public release. Do this by hand, after checking the build.
+   public release. Do this by hand, after checking the build. Leave
+   **Set as the latest release** checked: GitHub turns it on by default
+   for a release that is not a prerelease, and unchecking it publishes
+   the release without making it the latest.
 2. In [d4rkwyng/homebrew-tap](https://github.com/d4rkwyng/homebrew-tap),
    update `Casks/first-light.rb`: set `version` to `X.Y.Z` (no leading
    `v`) and `sha256` to the zip's digest.
