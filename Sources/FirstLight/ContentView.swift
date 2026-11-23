@@ -172,6 +172,13 @@ struct ContentView: View {
         } message: {
             Text(controller.customTapeError ?? "")
         }
+        .alert("Recording failed",
+               isPresented: Binding(get: { controller.recordError != nil },
+                                    set: { if !$0 { controller.recordError = nil } })) {
+            Button("OK", role: .cancel) { controller.recordError = nil }
+        } message: {
+            Text(controller.recordError ?? "")
+        }
         .sheet(isPresented: Binding(get: { controller.aciInspectRequested },
                                     set: { controller.aciInspectRequested = $0 })) {
             ACIInspectView { controller.aciInspectRequested = false }

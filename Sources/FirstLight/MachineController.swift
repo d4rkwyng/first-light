@@ -968,6 +968,8 @@ final class MachineController {
 
     /// Shown (and cleared) by the bench when a custom tape can't be loaded.
     var customTapeError: String?
+    /// Shown (and cleared) by the bench when recording to disk fails.
+    var recordError: String?
 
     func insertCustom(url: URL) {
         ensure6502()
@@ -1161,7 +1163,14 @@ final class MachineController {
         panel.nameFieldStringValue = "\(name).woz.txt"
         panel.allowedContentTypes = [.plainText]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        try? text.write(to: url, atomically: true, encoding: .utf8)
+        recordError = nil
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            // nothing was recorded: don't pretend otherwise
+            recordError = "\(url.lastPathComponent) couldn't be saved: \(error.localizedDescription)"
+            return
+        }
         // Only a single contiguous range round-trips faithfully as one .wav
         // (a flat stream has no addresses; no real tape concatenated two
         // non-contiguous ranges). Multi-range tapes keep just the .woz.txt,
@@ -1169,7 +1178,12 @@ final class MachineController {
         if ranges.count == 1 {
             let wavURL = url.deletingPathExtension().deletingPathExtension()
                 .appendingPathExtension("wav")
-            try? sound.writeTapeWAV(bytes: bytes, to: wavURL)
+            do {
+                try sound.writeTapeWAV(bytes: bytes, to: wavURL)
+            } catch {
+                recordError = "\(url.lastPathComponent) was saved, but \(wavURL.lastPathComponent) "
+                    + "couldn't be written: \(error.localizedDescription)"
+            }
         }
         sound.tapeLoad() // a little record-head chirp for the moment
         insertedTapeName = name.uppercased()

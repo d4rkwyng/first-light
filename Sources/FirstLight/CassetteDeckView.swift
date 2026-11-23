@@ -396,9 +396,13 @@ struct RecordTapeView: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
             }
-            Text("Saves a wozmon-format .txt (reloads via Load Custom "
-                 + "Cassette) and a bit-true .wav — the actual ACI tones, "
-                 + "playable to a real Apple-1.")
+            Text(preset == 1
+                 ? "Saves a wozmon-format .txt (reloads via Load Custom "
+                   + "Cassette). A BASIC tape is two ranges — pointers and "
+                   + "program — so there's no single .wav for it."
+                 : "Saves a wozmon-format .txt (reloads via Load Custom "
+                   + "Cassette) and a bit-true .wav — the actual ACI tones, "
+                   + "playable to a real Apple-1.")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
             HStack {
