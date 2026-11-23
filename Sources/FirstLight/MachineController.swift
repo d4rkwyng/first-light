@@ -229,6 +229,7 @@ final class MachineController {
     /// ROM with typed commands, and run the program when the tape ends.
     private func stageAuthenticACILoad(name: String, bytes: [UInt8],
                                        load: Int, run: String) {
+        cancelCustomDecode() // this load supersedes a recording still decoding
         // Load the machine AS-IS: a cassette can't re-seat chips you pulled
         // (if essentials are missing it fails like the real hardware). The
         // connects below are just plugging cables — power, display, the ACI.
@@ -862,6 +863,7 @@ final class MachineController {
     /// and runs it.
     func insert(_ tape: Tape) {
         ensure6502()
+        cancelCustomDecode() // the user picked another tape: drop a pending decode
         if blockedByMissingParts(tape) {
             // keep it "in the deck" so PLAY retries once you seat the parts
             lastTape = tape
@@ -1383,6 +1385,7 @@ final class MachineController {
     /// or a runaway program.
     func loadBASIC() {
         ensure6502()
+        cancelCustomDecode() // ⌘B supersedes a recording still decoding
         guard powered, connected.contains(.aciCard), placed.contains(.ramX),
               let basic = try? ROM.integerBASIC() else { return }
         reset()
