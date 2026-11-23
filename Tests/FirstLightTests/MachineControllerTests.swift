@@ -411,4 +411,23 @@ struct MachineControllerTests {
         #expect(c.nowLoading == "late")
         #expect(c.customDecode == nil)
     }
+
+    @Test func tutorialAndStripDropAPendingDecodeOnAnUnpoweredBench() async throws {
+        // Codex round 4 suspected these leaked a pending decode when the
+        // bench was already unpowered. They don't: disconnect(.power) cancels
+        // unconditionally. This pins that down, plus STOP's availability.
+        let wav = tempURL("pending.wav")
+        try makeController().sound.writeTapeWAV(bytes: [0xEA], to: wav)
+        for action in ["tutorial", "strip"] {
+            let c = makeController()
+            #expect(!c.powered)
+            c.insertCustom(url: wav)
+            let pending = try #require(c.customDecode)
+            #expect(c.tapeBusy, "STOP must be available while decoding")
+            if action == "tutorial" { c.startTutorial() } else { c.stripBoard() }
+            await pending.value
+            #expect(c.nowLoading == nil, "\(action) during decode must stick")
+            #expect(!c.tapeBusy)
+        }
+    }
 }

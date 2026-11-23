@@ -81,7 +81,8 @@ struct TapeDeckBar: View {
                     controller.playInsertedTape()
                 }
                 key("F.F", enabled: !loading) { controller.fastForwardTape() }
-                key("STOP", enabled: loading) { controller.stopTape() }
+                // also live while a recording decodes, before the reels turn
+                key("STOP", enabled: controller.tapeBusy) { controller.stopTape() }
                 key("EJECT", enabled: controller.insertedTapeName != nil && !loading) {
                     controller.ejectTape()
                 }

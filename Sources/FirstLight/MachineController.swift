@@ -980,6 +980,9 @@ final class MachineController {
     private(set) var customDecode: Task<Void, Never>?
     private var customDecodeGeneration = 0
 
+    /// A load is in flight or a recording is still decoding: STOP applies.
+    var tapeBusy: Bool { nowLoading != nil || customDecode != nil }
+
     private func cancelCustomDecode() {
         customDecodeGeneration += 1
         customDecode?.cancel()
