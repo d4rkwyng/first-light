@@ -110,9 +110,18 @@ final class SoundEngine {
         return buffer
     }
 
+    /// Start the engine if needed; false if it can't run (no output device,
+    /// a route change it couldn't recover from). AVAudioPlayerNode.play() on
+    /// a stopped engine raises an Objective-C exception Swift can't catch,
+    /// so every play() must be gated on this.
+    private func engineReady() -> Bool {
+        if engine.isRunning { return true }
+        do { try engine.start() } catch { return false }
+        return engine.isRunning
+    }
+
     private func play(_ name: String) {
-        guard enabled, let buffer = buffers[name] else { return }
-        if !engine.isRunning { try? engine.start() }
+        guard enabled, let buffer = buffers[name], engineReady() else { return }
         fx.scheduleBuffer(buffer, at: nil)
         fx.play()
     }
@@ -177,8 +186,7 @@ final class SoundEngine {
         // sound IS what the machine hears
         let (buffer, duration) = makeTapeAudio(
             bytes: bytes, leaderSeconds: authentic ? 6.0 : 0.6)
-        guard enabled else { return duration }
-        if !engine.isRunning { try? engine.start() }
+        guard enabled, engineReady() else { return duration }
         tapeRamp?.cancel()
         tape.volume = 0.5
         tape.scheduleBuffer(buffer, at: nil)
@@ -206,8 +214,7 @@ final class SoundEngine {
     func flybackSet(_ on: Bool) {
         guard on != flybackRunning else { return }
         flybackRunning = on
-        if on, enabled, let loop = buffers["flybackLoop"] {
-            if !engine.isRunning { try? engine.start() }
+        if on, enabled, let loop = buffers["flybackLoop"], engineReady() {
             flyback.scheduleBuffer(loop, at: nil, options: .loops)
             flyback.play()
         } else {
@@ -220,8 +227,7 @@ final class SoundEngine {
 
     func powerOn() {
         play("thunk")
-        guard enabled, let loop = buffers["humLoop"] else { return }
-        if !engine.isRunning { try? engine.start() }
+        guard enabled, let loop = buffers["humLoop"], engineReady() else { return }
         humRamp?.cancel()
         hum.volume = 0.16
         hum.scheduleBuffer(loop, at: nil, options: .loops)
