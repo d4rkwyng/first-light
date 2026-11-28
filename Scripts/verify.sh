@@ -30,12 +30,10 @@ JOBS="${VERIFY_JOBS:-4}"
 echo "==> verify.sh: HEAD $SHA  jobs=$JOBS  DEVELOPER_DIR=${DEVELOPER_DIR:-<unset>}"
 
 
-# Tests run as a release build (see Scripts/test.sh). Build that configuration first
-# so the suite does not pay for a second compile.
-echo "==> [1/4] clean build (swift build -c release --build-tests; .build is not wiped)"
-swift build -c release --build-tests --jobs "$JOBS"
-
-echo "==> [2/4] full suite (Scripts/test.sh, --no-parallel)"
+# Scripts/test.sh is the repo's real compile-and-test entry point: a release
+# build, --no-parallel, and the TestingMacros plugin path under the Command
+# Line Tools. It builds, then runs the suite. .build is not wiped.
+echo "==> [1-2/4] clean build and full suite (Scripts/test.sh, --no-parallel)"
 Scripts/test.sh --jobs "$JOBS"
 
 echo "==> [3/4] timing-test 5x loop"
