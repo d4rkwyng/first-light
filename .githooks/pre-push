@@ -1,0 +1,54 @@
+#!/bin/bash
+# pre-push: refuse a push unless Scripts/verify.sh has stamped this exact HEAD
+# on a clean work tree. Tracked at .githooks/pre-push; enable in a worktree with:
+#   git config extensions.worktreeConfig true
+#   git config --worktree core.hooksPath .githooks
+#
+# Emergency override (logs itself to stderr and to
+# $(git rev-parse --git-common-dir)/verify-override.log):
+#   VERIFY_PUSH_OVERRIDE=<reason> git push ...
+# A bare `git push --no-verify` also skips this hook, and does not log. Prefer the
+# override so the skip is recorded.
+set -euo pipefail
+
+zeros=0000000000000000000000000000000000000000
+common="$(git rev-parse --git-common-dir)"
+stamp_dir="$common/verify-stamps"
+
+log_override() {
+    local reason="$1" sha="$2"
+    local log="$common/verify-override.log"
+    local line
+    line="$(date -u +%Y-%m-%dT%H:%M:%SZ) host=$(hostname) user=${USER:-} sha=$sha reason=$reason worktree=$(pwd)"
+    echo "pre-push: OVERRIDE $line" >&2
+    echo "$line" >> "$log"
+}
+
+fail() { echo "pre-push: $*" >&2; exit 1; }
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if [ "$local_sha" = "$zeros" ]; then
+        continue
+    fi
+    if [ -n "${VERIFY_PUSH_OVERRIDE:-}" ]; then
+        log_override "$VERIFY_PUSH_OVERRIDE" "$local_sha"
+        continue
+    fi
+    if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
+        fail "working tree is not clean. Commit or stash, then run Scripts/verify.sh."
+    fi
+    head="$(git rev-parse HEAD)"
+    if [ "$head" != "$local_sha" ]; then
+        fail "HEAD ($head) is not the tip being pushed ($local_sha). Check out that commit, run Scripts/verify.sh, and push from a clean tree."
+    fi
+    stamp="$stamp_dir/$local_sha"
+    if [ ! -f "$stamp" ]; then
+        echo "pre-push: no verify stamp for $local_sha. Run Scripts/verify.sh (clean tree required)." >&2
+        echo "pre-push: emergency override: VERIFY_PUSH_OVERRIDE=<reason> git push ..." >&2
+        exit 1
+    fi
+    grep -q "^sha=$local_sha$" "$stamp" || fail "stamp $stamp does not match $local_sha"
+    grep -q "^clean=1$" "$stamp" || fail "stamp $stamp is not a clean-tree stamp"
+done
+
+exit 0
